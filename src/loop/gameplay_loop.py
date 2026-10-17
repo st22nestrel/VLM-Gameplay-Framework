@@ -532,6 +532,8 @@ class GameplayLoop:
         self.cursor_mode = config.cursor_mode
         self.vlm_image_mode = config.vlm_image_mode
         self.frame_cadence_ms = config.frame_cadence_ms
+        self.inference_interval_ms = config.inference_interval_ms
+        self._last_inference_started_at: Optional[float] = None
 
         # Finish config
         self.finish_strategy_name = config.finish_strategy_name
@@ -575,6 +577,7 @@ class GameplayLoop:
         self._capture_thread: Optional[threading.Thread] = None
         self._frames_captured = 0
         self._post_action_settle_until: Optional[float] = None
+        self._frame_not_before: Optional[float] = None
 
         # Tick log
         self._tick_log: list[dict] = []
@@ -587,23 +590,29 @@ class GameplayLoop:
         self._last_progress_crop: Optional[Image.Image] = None
         self._progress_region_active: bool = False
         self._progress_count: int = 0
+        self._progress_lock = threading.Lock()
+        self._progress_samples: list[dict[str, Any]] = []
+        self._progress_samples_consumed = 0
 
     # -- capture thread -------------------------------------------------------
 
     def _capture_loop(self) -> None:
         """Background capture thread: captures frames at configured cadence."""
         interval = self.frame_cadence_ms / 1000.0
+        next_capture = time.monotonic()
         while not self._stop_event.is_set():
             try:
                 frame = _do_capture(self.session, self.capture_method)
                 if frame is not None:
                     self._frames_captured += 1
+                    self._sample_background_progress(frame)
                     self._frame_queue.put(frame)
                 else:
                     logger.debug("Capture returned None")
             except Exception as e:
                 logger.error("Capture error: %s", e)
-            self._stop_event.wait(interval)
+            next_capture = max(next_capture + interval, time.monotonic())
+            self._stop_event.wait(max(0.0, next_capture - time.monotonic()))
 
     def _start_capture_thread(self) -> None:
         if self.capture_strategy != "background":
@@ -632,6 +641,7 @@ class GameplayLoop:
         print(f"  Backend:         {self._backend.backend_name}")
         print(f"  Model:           {self._backend.model_name}")
         print(f"  Frame cadence:   {self.frame_cadence_ms}ms")
+        print(f"  Min request interval: {self.inference_interval_ms}ms")
         print(f"  Capture strategy: {self.capture_strategy}")
         if self.capture_strategy == "after_action":
             print(f"  Action settle:   {self.post_action_settle_ms}ms")
@@ -760,7 +770,7 @@ class GameplayLoop:
         return round(mean_delta, 4)
 
     def _progress_tracking_values(
-        self, tick_idx: int, current_image: Image.Image
+        self, tick_idx: int, current_image: Image.Image, *, debug_prefix: str = "tick"
     ) -> dict[str, Any]:
         """Detect turn progress from a fixed screen region (e.g. a spinner).
 
@@ -782,7 +792,7 @@ class GameplayLoop:
         current_crop = self._progress_region_crop(current_image)
 
         if cfg.save_debug_crops and current_crop is not None:
-            debug_path = self.output_dir / f"tick_{tick_idx:04d}_progress_tracking.png"
+            debug_path = self.output_dir / f"{debug_prefix}_{tick_idx:04d}_progress_tracking.png"
             try:
                 current_crop.save(debug_path)
             except Exception as exc:
@@ -817,6 +827,40 @@ class GameplayLoop:
                 "progress_count": self._progress_count,
             }
         )
+        return meta
+
+    def _sample_background_progress(self, frame: CapturedFrame) -> None:
+        """Measure every captured raw frame, including while inference blocks."""
+        if not self._progress_cfg.enabled:
+            return
+        with self._progress_lock:
+            sample_idx = len(self._progress_samples)
+            meta = self._progress_tracking_values(
+                sample_idx, frame.image, debug_prefix="capture",
+            )
+            self._progress_samples.append({
+                "sample": sample_idx,
+                "timestamp": frame.timestamp,
+                **meta,
+            })
+
+    def _progress_for_tick(self, tick_idx: int, image: Image.Image) -> dict[str, Any]:
+        if self.capture_strategy != "background" or not self._progress_cfg.enabled:
+            return self._progress_tracking_values(tick_idx, image)
+        # The producer owns the detector. Do not remeasure an older queued frame
+        # or count the same spinner transition a second time on the main thread.
+        with self._progress_lock:
+            samples = self._progress_samples[self._progress_samples_consumed:]
+            meta = dict(self._progress_samples[-1])
+            self._progress_samples_consumed = len(self._progress_samples)
+            meta["progress_event"] = any(s["progress_event"] for s in samples)
+            meta["progress_events_since_tick"] = sum(s["progress_event"] for s in samples)
+            meta["samples_since_tick"] = len(samples)
+        # Preserve the viewer's per-tick debug crop without touching the detector.
+        if self._progress_cfg.save_debug_crops:
+            crop = self._progress_region_crop(image)
+            if crop is not None:
+                crop.save(self.output_dir / f"tick_{tick_idx:04d}_progress_tracking.png")
         return meta
 
     def _state_context_values(self, current_image: Image.Image) -> dict[str, Any]:
@@ -1373,6 +1417,7 @@ class GameplayLoop:
         error: list[Optional[Exception]] = [None]
 
         def _worker() -> None:
+            self._last_inference_started_at = time.monotonic()
             try:
                 if messages is not None:
                     if generation_params is None:
@@ -1506,11 +1551,9 @@ class GameplayLoop:
         plan: TickPlan,
         execution_summary: dict[str, Any],
     ) -> None:
-        """Delay the next synchronous capture after a real executed action."""
+        """Require the next model frame to follow the executed action and settle."""
         if (
-            self.capture_strategy != "after_action"
-            or self.post_action_settle_ms <= 0
-            or execution_summary.get("skipped", False)
+            execution_summary.get("skipped", False)
             or execution_summary.get("dry_run", self.dry_run)
         ):
             self._post_action_settle_until = None
@@ -1532,6 +1575,7 @@ class GameplayLoop:
         self._post_action_settle_until = (
             time.monotonic() + self.post_action_settle_ms / 1000.0
         )
+        self._frame_not_before = time.time() + self.post_action_settle_ms / 1000.0
 
     def _wait_for_post_action_settle(
         self,
@@ -1553,6 +1597,7 @@ class GameplayLoop:
                     settle_until,
                     now + self.post_action_settle_ms / 1000.0,
                 )
+                self._frame_not_before = time.time() + self.post_action_settle_ms / 1000.0
             remaining = settle_until - now
             if remaining <= 0:
                 break
@@ -1612,8 +1657,56 @@ class GameplayLoop:
         executor: ActionExecutor,
     ) -> Optional[CapturedFrame]:
         if self.capture_strategy == "background":
-            return self._get_frame_with_action_release(timeout, state, executor)
+            self._wait_for_post_action_settle(state, executor)
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                frame = self._get_frame_with_action_release(remaining, state, executor)
+                if frame is None or self._frame_not_before is None:
+                    return frame
+                if frame.timestamp >= self._frame_not_before:
+                    return frame
         return self._capture_synchronously(timeout, state, executor)
+
+    def _wait_for_inference_slot(
+        self, state: ActionState, executor: ActionExecutor,
+    ) -> bool:
+        """Throttle request starts, without blocking the capture producer."""
+        if self._last_inference_started_at is None:
+            return True
+        deadline = self._last_inference_started_at + self.inference_interval_ms / 1000.0
+        while True:
+            self._release_actions_if_due(state, executor)
+            if self._pause_controller and self._pause_controller.is_paused:
+                return False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return True
+            time.sleep(min(0.05, remaining))
+
+    def _wait_for_final_progress_sample(
+        self, state: ActionState, executor: ActionExecutor,
+    ) -> None:
+        """Observe the final click once before stopping the capture producer."""
+        if (
+            self.capture_strategy != "background"
+            or not self._progress_cfg.enabled
+            or self._frame_not_before is None
+        ):
+            return
+        self._wait_for_post_action_settle(state, executor)
+        deadline = time.monotonic() + 2 * self.frame_cadence_ms / 1000.0
+        while time.monotonic() < deadline:
+            self._release_actions_if_due(state, executor)
+            with self._progress_lock:
+                if (
+                    self._progress_samples
+                    and self._progress_samples[-1]["timestamp"] >= self._frame_not_before
+                ):
+                    return
+            time.sleep(0.05)
 
     # -- single tick ----------------------------------------------------------
 
@@ -1644,7 +1737,7 @@ class GameplayLoop:
             else None
         )
 
-        progress_meta = self._progress_tracking_values(tick_idx, current_image)
+        progress_meta = self._progress_for_tick(tick_idx, current_image)
 
         base_user_prompt = user_prompt_override or self.user_prompt
         current_user_prompt, state_context_meta = self._current_prompt_with_state_context(
@@ -1802,6 +1895,7 @@ class GameplayLoop:
             "action_hold": action_hold_meta,
             "skipped": summary.get("skipped", False),
             "inference_error": inference_error,
+            "inference_started_at": t0,
             "inference_latency_ms": inference_ms,
             "frames_dropped": self._frame_queue.total_dropped,
         }
@@ -1912,6 +2006,7 @@ class GameplayLoop:
             while True:
                 if self.max_ticks is not None and tick_idx >= self.max_ticks:
                     logger.info("Max ticks reached (%d), stopping", self.max_ticks)
+                    self._wait_for_final_progress_sample(state, executor)
                     break
 
                 # Handle pause/resume transitions
@@ -1942,6 +2037,11 @@ class GameplayLoop:
                     self._frame_queue.clear()
                     self._start_capture_thread()
                     was_paused = False
+
+                # Wait before selecting the image, so rate limiting does not
+                # leave us sending a screenshot taken before the prior action.
+                if not self._wait_for_inference_slot(state, executor):
+                    continue
 
                 # Get latest frame (wait up to 2x cadence)
                 timeout = (self.frame_cadence_ms / 1000.0) * 2
@@ -2038,11 +2138,13 @@ class GameplayLoop:
             "visual_context": self._visual_context_cfg.to_log_dict(),
             "progress_tracking": self._progress_cfg.to_log_dict(),
             "total_progress_count": self._progress_count,
+            "progress_samples": self._progress_samples,
             "log_vlm_io": self._log_vlm_io,
             "vlm_io_log": str(vlm_io_path) if vlm_io_path is not None else None,
             "action_hold_duration_ms": self._action_hold_duration_ms,
             "freeze": self._freeze_cfg.to_log_dict(),
             "frame_cadence_ms": self.frame_cadence_ms,
+            "inference_interval_ms": self.inference_interval_ms,
             "capture_strategy": self.capture_strategy,
             "post_action_settle_ms": self.post_action_settle_ms,
             "max_new_tokens": self._max_new_tokens,

@@ -34,7 +34,7 @@ defaults:
       strategy: after_action
       post_action_settle_ms: 250
       cursor_mode: both
-      vlm_image_mode: cursor
+      vlm_image_mode: raw
       output_dir: outputs/captures
 
     actions:
@@ -167,7 +167,9 @@ runs:
       gameplay:
         <<: *original_gameplay
         model_settings:
-          lora_adapter_path: &finetuned_adapter outputs/vlm_finetunes/qwen3vl-2B/qwen3-VL-2B-unsloth/best_lora
+          # Local adapter weights are gitignored and are not published yet.
+          # Without them, select base-model runs; see docs/chess_experiments.md.
+          lora_adapter_path: &finetuned_adapter data/models/adapters/qwen3-vl-2b-chess-lora
           generation_params: *original_sampling
 
   # B vs A: change only the prompts (White, selection/destination, coordinates).

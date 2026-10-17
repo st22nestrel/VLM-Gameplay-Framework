@@ -1,0 +1,268 @@
+# Copy of the Qwen3-VL chess screening suite, comparing Google-hosted Gemma 4.
+# Seven conditions x two models x two repeats = 28 games / at most 840 API calls.
+# Set GEMINI_API_KEY in .env. No local model weights or LoRA adapter are used.
+# Capture/progress: every 1 s, including while awaiting the API.
+# Model requests: at least 2 s apart; slow responses reduce the request rate.
+# top_k is omitted because this OpenAI-compatible backend supports temperature/top_p.
+# Thinking is disabled equally for both models. SDK retries are disabled so a
+# failed request cannot trigger immediate additional calls inside the 2 s interval.
+# Baseline/mixed, visual-pair, recovery, and exploration conditions are retained.
+# Validate without API calls or game launch:
+# conda run -n transformers5 python -m src.cli.main gameplay-suite --config configs/eval/gameplay_suite_gemma4_google_chess_experiments.yaml --validate-only
+# Run: remove --validate-only. --dry-run still sends API requests.
+
+name: gemma4_google_chess_experiments
+output_dir: outputs/gameplay-suites
+game:
+  executable: C:\Program Files\Microsoft Games\Chess\chess.exe
+  title: Chess Titans
+  args: []
+  cwd: null
+  post_launch_wait_ms: 5000
+  launch_timeout_ms: 20000
+  close_timeout_ms: 5000
+  terminate_after_close_timeout: true
+  focus: true
+defaults:
+  max_ticks: 30
+  overrides:
+    target_window:
+      hwnd: null
+      title_substring: Chess Titans
+    capture:
+      method: auto
+      strategy: background
+      post_action_settle_ms: 250
+      cursor_mode: both
+      vlm_image_mode: raw
+      output_dir: outputs/captures
+    actions:
+      config_path: configs/actions/default-actions_chess.yaml
+      disable_center_delta_conversion: false
+    gameplay:
+      backend: openai
+      model: gemma-4-26b-a4b-it
+      max_new_tokens: 2048
+      model_settings:
+        enable_thinking: false
+        normalize_coordinates_from_0_1000: true
+        temperature: 1.0
+        top_p: 0.95
+        generation_params:
+          strategy: 'off'
+      system_prompt: |
+        You are playing Chess Titans as White. Your goal is to win the game.
+        You control the white pieces; the computer controls the black pieces.
+        Make each move with two clicks across two responses: first select a white piece, then click a legal destination for it on the next screenshot.
+        If a white piece is already selected or highlighted, click its legal destination instead of selecting it again.
+        Use the latest screenshot to decide whether you are selecting a piece or completing a move.
+        Click the center of the intended square.
+        Coordinates are integers from 0 to 1000 relative to the entire current game screenshot: top-left is 0 0, bottom-right is 1000 1000.
+        Only one action is available: click at x y.
+        Your entire response must be exactly one line matching this format: click at <x> <y>
+        Do not explain, describe, analyze, use markdown, or mention chess notation.
+        Examples: "click at 100 100"
+      user_prompt: |
+        Look at the current screenshot. If a white piece is selected, click a legal destination for it.
+        Otherwise, click a white piece to select it for your next move.
+        Return exactly one action: click at <x> <y>
+      log_vlm_io: true
+      action_hold_duration_ms: null
+      message_history:
+        mode: none
+      state_context:
+        enabled: false
+      visual_context:
+        mode: 'off'
+      progress_tracking:
+        enabled: true
+        region:
+          left: 710
+          top: 38
+          width: 42
+          height: 64
+        change_threshold: 0.02
+        save_debug_crops: true
+      delay_ms: 3000
+      frame_cadence_ms: 1000
+      output_dir: outputs/gameplay-runs
+      pause_key: f1
+      finish_strategy: ask_user
+      finish_keywords:
+      - game over
+      - level complete
+      - mission accomplished
+      - finished
+      - completed
+      - objective complete
+      inference_interval_ms: 2000
+      openai:
+        base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+        api_key_env: GEMINI_API_KEY
+        timeout_sec: 120
+        max_retries: 0
+        send_chat_template_kwargs: false
+        google_thinking_level: MINIMAL
+execution:
+  repeats: 2
+  fail_fast: false
+debug:
+  dump_resolved_gameplay_config: true
+runs:
+- name: gemma4_26b_baseline
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      system_prompt: |
+        You are playing a chess game. Your goal is to win the game. Only one action is available: click at x y.
+        Your entire response must be exactly one line matching this format: click at <x> <y>
+        Do not explain, describe, analyze, use markdown, or mention chess notation.
+        Examples: "click at 100 100"
+      user_prompt: |
+        Return exactly one action for the current screenshot: click at <x> <y>
+      model_settings:
+        generation_params: &mixed_sampling
+          strategy: options
+          seed: 42
+          seed_scope: same_per_suite
+          selection: sequential
+          value_precision: 3
+          key_precision: 3
+          usage_summary_top_n: 10
+          options:
+          - name: standard
+            temperature: 1.0
+            top_p: 0.95
+          - name: precise
+            temperature:
+              min: 0.2
+              max: 0.5
+            top_p:
+              min: 0.7
+              max: 0.9
+          - name: creative
+            temperature:
+              min: 0.8
+              max: 1.2
+            top_p:
+              min: 0.9
+              max: 1.0
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_baseline
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      system_prompt: |
+        You are playing a chess game. Your goal is to win the game. Only one action is available: click at x y.
+        Your entire response must be exactly one line matching this format: click at <x> <y>
+        Do not explain, describe, analyze, use markdown, or mention chess notation.
+        Examples: "click at 100 100"
+      user_prompt: |
+        Return exactly one action for the current screenshot: click at <x> <y>
+      model_settings:
+        generation_params: *mixed_sampling
+      model: gemma-4-31b-it
+- name: gemma4_26b_explicit_mixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model_settings:
+        generation_params: *mixed_sampling
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_explicit_mixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model_settings:
+        generation_params: *mixed_sampling
+      model: gemma-4-31b-it
+- name: gemma4_26b_explicit_fixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_explicit_fixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model: gemma-4-31b-it
+- name: gemma4_26b_visual_pair
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      visual_context: &visual_pair
+        mode: always_last_2
+        panel_width: 768
+        label_height: 28
+        prompt_note: The attached image contains LEFT/PREVIOUS and RIGHT/CURRENT panels. LEFT is the screenshot
+          before the last click; RIGHT is the latest screenshot after it. Compare them to see whether
+          a piece was selected, a move completed, or the click had no useful effect. Choose your next
+          click in RIGHT/CURRENT. Report x y normalized from 0 to 1000 WITHIN THE RIGHT SCREENSHOT ONLY,
+          excluding the label strip. The right screenshot's own top-left is 0 0 and its own bottom-right
+          is 1000 1000.
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_visual_pair
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      visual_context: *visual_pair
+      model: gemma-4-31b-it
+- name: gemma4_26b_stuck_hint
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      state_context: &chess_recovery
+        enabled: true
+        repeat_threshold: 999
+        screen_change_repeat_threshold: 3
+        screen_change_threshold: 0.003
+        template: '{stuck_reason} {stuck_hint}'
+        stuck_hint: Check the latest board carefully. If a white piece is selected, complete the move
+          by clicking a legal destination. Otherwise, select a movable white piece. If your click made
+          no useful change, choose another square or piece. Return one click action in the required format.
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_stuck_hint
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      state_context: *chess_recovery
+      model: gemma-4-31b-it
+- name: gemma4_26b_stuck_visual
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      state_context: *chess_recovery
+      visual_context: &stuck_visual
+        mode: on_stuck
+        panel_width: 768
+        label_height: 28
+        prompt_note: The attached image contains LEFT/PREVIOUS and RIGHT/CURRENT panels. LEFT is the screenshot
+          before the last click; RIGHT is the latest screenshot after it. Compare them to see whether
+          a piece was selected, a move completed, or the click had no useful effect. Choose your next
+          click in RIGHT/CURRENT. Report x y normalized from 0 to 1000 WITHIN THE RIGHT SCREENSHOT ONLY,
+          excluding the label strip. The right screenshot's own top-left is 0 0 and its own bottom-right
+          is 1000 1000.
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_stuck_visual
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      state_context: *chess_recovery
+      visual_context: *stuck_visual
+      model: gemma-4-31b-it
+- name: gemma4_26b_exploratory_fixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model_settings:
+        temperature: 1.2
+        top_p: 0.98
+      model: gemma-4-26b-a4b-it
+- name: gemma4_31b_exploratory_fixed
+  gameplay_config: configs/runtime/gameplay_gemma4_google.yaml
+  overrides:
+    gameplay:
+      model_settings:
+        temperature: 1.2
+        top_p: 0.98
+      model: gemma-4-31b-it

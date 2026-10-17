@@ -49,6 +49,7 @@ def create_backend_from_gameplay_config(config: GameplayRuntimeConfig) -> VLMBac
                 openai_cfg.get("send_chat_template_kwargs", True)
             ),
             google_thinking_level=openai_cfg.get("google_thinking_level"),
+            max_retries=int(openai_cfg.get("max_retries", 2)),
         )
 
     if backend_name == "llama_cpp_server":

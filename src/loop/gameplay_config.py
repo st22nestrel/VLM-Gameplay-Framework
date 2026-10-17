@@ -516,6 +516,7 @@ class GameplayRuntimeConfig:
     cursor_mode: str
     vlm_image_mode: str
     frame_cadence_ms: int
+    inference_interval_ms: int
     finish_strategy_name: str
     finish_keywords: list[str]
     action_config_path: str
@@ -609,7 +610,10 @@ class GameplayRuntimeConfig:
                 capture_cfg,
                 default="cursor",
             ),
-            frame_cadence_ms=int(gp.get("frame_cadence_ms", 1000)),
+            frame_cadence_ms=max(1, int(gp.get("frame_cadence_ms", 1000))),
+            inference_interval_ms=_nonnegative_int_value(
+                gp.get("inference_interval_ms", 0), 0,
+            ),
             finish_strategy_name=str(gp.get("finish_strategy", "ask_user")),
             finish_keywords=[str(item) for item in finish_keywords],
             action_config_path=action_config_path,

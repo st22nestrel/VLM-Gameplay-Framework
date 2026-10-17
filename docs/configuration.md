@@ -37,6 +37,36 @@ whether a particular application accepts capture/input.
 The optional freeze feature is retained but disabled by default. It needs a
 separate `xspeedhack` installation and permissions to attach to the target.
 
+Capture and API timing can be configured independently:
+
+```yaml
+capture:
+  strategy: background
+  post_action_settle_ms: 250
+gameplay:
+  frame_cadence_ms: 1000
+  inference_interval_ms: 2000
+```
+
+`inference_interval_ms` is the minimum interval between model request starts,
+including failed requests. Its default is 0 (no additional throttling). A slow
+response lowers the request rate; requests never overlap. The wait happens before
+selecting the next frame. Background frames from before the last executed action
+and its settle interval are excluded from model input.
+
+With background capture, progress tracking measures every captured raw frame,
+including frames captured during inference and rate-limit waits. The detector
+does not count a queued frame again when it is sent to the model. The log retains
+`progress_samples` with capture timestamps, event flags, and cumulative counts;
+optional crops use `capture_NNNN_progress_tracking.png`. Per-tick crops remain
+available to the viewer. Frames overwritten in the latest-frame queue still
+contribute to progress detection. The last click receives a final progress sample
+before a tick-limited run ends. After-action capture continues measuring progress
+once per model tick.
+
+`gameplay.openai.max_retries` controls SDK retries (default 2). The Gemma comparison
+sets it to 0, preventing SDK retries from bypassing the two-second request spacing.
+
 To inspect control bindings in a settings screen, use:
 
 ```powershell

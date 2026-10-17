@@ -62,6 +62,9 @@ class OpenAIBackend(VLMBackend):
         `chat_template_kwargs.enable_thinking` or `reasoning_effort`, Gemma
         models accept this field without a 400 error. Leave unset for
         backends/models that don't support it.
+    max_retries : int
+        SDK retries after connection/rate-limit errors (default 2). Set to 0
+        when the gameplay loop must pace every request attempt itself.
     """
 
     def __init__(
@@ -79,6 +82,7 @@ class OpenAIBackend(VLMBackend):
         reasoning_effort: Optional[str] = None,
         send_chat_template_kwargs: bool = True,
         google_thinking_level: Optional[str] = None,
+        max_retries: int = 2,
     ) -> None:
         self._model_id = model_id
         self._max_new_tokens = max_new_tokens
@@ -96,6 +100,7 @@ class OpenAIBackend(VLMBackend):
         self._send_chat_template_kwargs = send_chat_template_kwargs
         self._reasoning_effort = reasoning_effort
         self._google_thinking_level = google_thinking_level
+        self._max_retries = max_retries
 
         self._client: Optional[OpenAI] = None
         self._loaded = False
@@ -150,6 +155,7 @@ class OpenAIBackend(VLMBackend):
             api_key=api_key,
             base_url=self._base_url,
             timeout=float(self._timeout_sec),
+            max_retries=self._max_retries,
         )
         self._loaded = True
         logger.info(

@@ -62,7 +62,7 @@ See [backend setup](docs/backends.md) and [configuration](docs/configuration.md)
 
 ## Gameplay experiments and viewer
 
-The only bundled evaluation suite is
+The local Qwen3-VL evaluation suite is
 `configs/eval/gameplay_suite_qwen3vl_2b_chess_experiments.yaml`. It has 14 conditions
 with two repeats (28 games), including fine-tuned runs that require a separately
 provided LoRA adapter at `data/models/adapters/qwen3-vl-2b-chess-lora/` (gitignored).
@@ -71,6 +71,12 @@ on a fresh public checkout.** Base-model runs work without it. Once published on
 Hugging Face, the adapter can be downloaded into this folder or referenced by its
 repository ID. See [chess experiments](docs/chess_experiments.md) for the
 conditions, prerequisites, and commands to run only the public base model.
+
+For Google-hosted Gemma 4, use
+`configs/eval/gameplay_suite_gemma4_google_chess_experiments.yaml`. It compares
+26B A4B and 31B across the same seven conditions, with two repeats and 30 model
+turns per game. It captures/probes progress every second and starts model requests
+at least two seconds apart. See [Gemma comparison](docs/gemma4_chess_experiments.md).
 
 ```powershell
 python -m src.cli.main gameplay-suite --config configs/eval/gameplay_suite_qwen3vl_2b_chess_experiments.yaml --run qwen3vl_2b_base_explicit_fixed --validate-only
