@@ -1,0 +1,26 @@
+# Local credentials (the template is public).
+.env
+.env.*
+!.env.example
+
+# Generated runs, local datasets, and model weights.
+outputs/
+# Local datasets and model weights, including data/models/adapters/.
+data/
+*.gguf
+*.safetensors
+
+# Python and development artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.claude/
+.vscode/
+.idea/

@@ -1,0 +1,69 @@
+# Google AI Studio / Gemini API example. Set GEMINI_API_KEY in .env.
+# https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api
+
+target_window:
+  hwnd: null
+  title_substring: Chess Titans
+capture:
+  method: auto
+  strategy: after_action
+  post_action_settle_ms: 250
+  cursor_mode: both
+  vlm_image_mode: cursor
+  output_dir: outputs/captures
+  burst:
+    frame_count: 10
+    interval_ms: 500
+actions:
+  config_path: configs/actions/default-actions_chess.yaml
+  disable_center_delta_conversion: false
+gameplay:
+  backend: openai
+  model: gemma-4-26b-a4b-it
+  max_new_tokens: 2048
+  system_prompt: |
+    You are playing Chess Titans as White. Your goal is to win the game.
+    You control the white pieces; the computer controls the black pieces.
+    Make each move with two clicks across two responses: first select a white piece, then click a legal destination for it on the next screenshot.
+    If a white piece is already selected or highlighted, click its legal destination instead of selecting it again.
+    Use the latest screenshot to decide whether you are selecting a piece or completing a move.
+    Click the center of the intended square.
+    Coordinates are integers from 0 to 1000 relative to the entire current game screenshot: top-left is 0 0, bottom-right is 1000 1000.
+    Only one action is available: click at x y.
+    Your entire response must be exactly one line matching this format: click at <x> <y>
+    Do not explain, describe, analyze, use markdown, or mention chess notation.
+    Examples: "click at 100 100"
+  user_prompt: |
+    Look at the current screenshot. If a white piece is selected, click a legal destination for it.
+    Otherwise, click a white piece to select it for your next move.
+    Return exactly one action: click at <x> <y>
+  log_vlm_io: true
+  action_hold_duration_ms: null
+  visual_context:
+    mode: off
+    panel_width: 384
+  delay_ms: 3000
+  frame_cadence_ms: 1000
+  output_dir: outputs/gameplay-runs
+  pause_key: f1
+  finish_strategy: ask_user
+  finish_keywords:
+  - game over
+  - level complete
+  - mission accomplished
+  - finished
+  - completed
+  - objective complete
+  model_settings:
+    enable_thinking: false
+    normalize_coordinates_from_0_1000: true
+    temperature: 1.0
+    top_p: 0.95
+  message_history:
+    mode: none
+  openai:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key_env: GEMINI_API_KEY
+    timeout_sec: 120
+    send_chat_template_kwargs: false
+    google_thinking_level: MINIMAL

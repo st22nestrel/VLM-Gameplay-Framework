@@ -1,0 +1,69 @@
+# Default action definitions for the VLM gameplay framework.
+#
+# Each action has:
+#   canonical_name:  internal identifier used everywhere after parsing
+#   synonyms:        alternative text forms the parser should accept
+#   execution:       what to do when this action fires
+#     type:          hold_key | press_key | mouse_button | mouse_move | click_at
+#     key:           virtual-key name (for keyboard actions)
+#     button:        "left" | "right" | "middle" (for mouse_button)
+#     hold:          true = stays active until next tick replaces it
+#
+# Separators the parser uses to split multi-action VLM text:
+separators:
+  - " and "
+  - " then "
+  - ";"
+  - ","
+  - "\n"
+
+actions:
+  - canonical_name: click
+    synonyms:
+      - click
+      - left click
+      - lmb
+    execution:
+      type: mouse_button
+      button: left
+      hold: true
+
+  - canonical_name: mouse move
+    synonyms:
+      - aim
+      - look
+      - look at
+      - mouse
+      - move mouse
+      - aim at
+      - move
+    execution:
+      type: mouse_move
+      hold: false
+    parameters:
+      - name: x
+        type: int
+        required: true
+      - name: y
+        type: int
+        required: true
+
+  - canonical_name: click at
+    synonyms:
+      - aim
+      - look
+      - look at
+      - mouse
+      - move mouse
+      - aim at
+      - move
+    execution:
+      type: click_at
+      hold: false
+    parameters:
+      - name: x
+        type: int
+        required: true
+      - name: y
+        type: int
+        required: true

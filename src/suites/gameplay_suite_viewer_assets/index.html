@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Gameplay Gallery</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#overview" aria-label="Gameplay Gallery home">
+      <span class="brand-mark">GG</span>
+      <span><b>Gameplay</b><i>Gallery</i></span>
+    </a>
+    <nav class="nav" aria-label="Viewer sections">
+      <button class="nav-item active" data-view="overview">Overview</button>
+      <button class="nav-item" data-view="inspect">Run Lab</button>
+      <button class="nav-item" data-view="compare">Compare Studio</button>
+    </nav>
+    <button class="button ghost" id="open-suite"><span>Open suite folder</span><b>↗</b></button>
+  </header>
+
+  <main>
+    <section id="loading" class="loading"><span></span><p>Cataloguing the run archive…</p></section>
+    <section id="error" class="error-state hidden"></section>
+
+    <section id="overview" class="view hidden">
+      <div class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span id="suite-status" class="status-dot"></span> Experiment archive · <span id="suite-folder"></span></p>
+          <h1 id="suite-name"></h1>
+          <p class="lede">A comparative field study of machine vision, action, and persistence.</p>
+          <div class="hero-meta"><span id="suite-date"></span><span id="suite-duration"></span><span id="suite-config"></span></div>
+        </div>
+        <div class="hero-object" aria-hidden="true">
+          <div class="orbital"><span></span><span></span><span></span></div>
+          <strong id="hero-run-count">0</strong><small>recorded<br>runs</small>
+        </div>
+      </div>
+
+      <div id="kpi-strip" class="kpi-strip"></div>
+
+      <div class="section-heading">
+        <div><p class="eyebrow">The headline</p><h2>Configuration study</h2></div>
+        <p>Aggregates across repeated runs. Select a work to enter the Run Lab.</p>
+      </div>
+      <div id="group-grid" class="group-grid"></div>
+
+      <div class="section-heading runs-heading">
+        <div><p class="eyebrow">The collection</p><h2>Individual runs</h2></div>
+        <div class="legend"><span><i class="good"></i>Progress</span><span><i class="warn"></i>Stuck</span><span><i class="neutral"></i>Latency</span></div>
+      </div>
+      <div id="run-grid" class="run-grid"></div>
+    </section>
+
+    <section id="inspect" class="view hidden">
+      <div class="workspace-head">
+        <div><p class="eyebrow">Run Lab</p><h1>Forensic replay</h1></div>
+        <div class="workspace-actions">
+          <label class="select-wrap">Run<select id="inspect-run"></select></label>
+          <button class="button ghost" id="open-run">Open run folder <b>↗</b></button>
+        </div>
+      </div>
+      <div class="replay-shell">
+        <div class="screen-column">
+          <div class="screen-toolbar">
+            <div class="segmented" id="screen-mode">
+              <button class="active" data-mode="raw">Raw</button><button data-mode="cursor">Cursor</button><button data-mode="vlm">VLM input</button><button data-mode="progress">Progress crop</button>
+            </div>
+            <span id="image-resolution" class="quiet"></span>
+          </div>
+          <div class="screen-frame"><img id="inspect-image" alt="Run screenshot"><svg id="inspect-click-marker" class="click-marker" aria-label="Predicted click location"></svg><div id="screen-empty" class="screen-empty hidden">No image for this view</div></div>
+          <div class="transport">
+            <button id="previous-event" class="transport-small" title="Previous notable tick">|‹</button>
+            <button id="previous-tick" class="transport-small" title="Previous tick">‹</button>
+            <button id="play" class="play" title="Play replay">▶</button>
+            <button id="next-tick" class="transport-small" title="Next tick">›</button>
+            <button id="next-event" class="transport-small" title="Next notable tick">›|</button>
+            <div class="scrubber-wrap"><input id="inspect-scrubber" type="range" min="0" max="0" value="0"><div class="scrubber-labels"><span>Tick <b id="inspect-tick">0</b></span><span id="inspect-total">0 frames</span></div></div>
+            <label class="speed">Speed<select id="play-speed"><option value="900">1×</option><option value="450">2×</option><option value="180">5×</option><option value="90">10×</option></select></label>
+          </div>
+        </div>
+        <aside class="evidence" id="inspect-evidence"></aside>
+      </div>
+      <div id="timeline" class="timeline"></div>
+      <section id="vlm-dispatch" class="dispatch"></section>
+    </section>
+
+    <section id="compare" class="view hidden">
+      <div class="workspace-head">
+        <div><p class="eyebrow">Compare Studio</p><h1>Synchronized study</h1></div>
+        <div class="workspace-actions compare-selectors">
+          <label class="select-wrap">Left<select id="compare-left"></select></label>
+          <button id="swap-runs" class="icon-button" title="Swap runs">⇄</button>
+          <label class="select-wrap">Right<select id="compare-right"></select></label>
+        </div>
+      </div>
+      <div id="compare-deltas" class="delta-strip"></div>
+      <div class="compare-stage">
+        <article class="compare-pane"><div class="pane-label" id="left-label"></div><div class="screen-frame"><img id="left-image" alt="Left run screenshot"><svg id="left-click-marker" class="click-marker" aria-label="Predicted click location"></svg></div><div class="pane-caption" id="left-caption"></div></article>
+        <div class="versus">VS</div>
+        <article class="compare-pane"><div class="pane-label" id="right-label"></div><div class="screen-frame"><img id="right-image" alt="Right run screenshot"><svg id="right-click-marker" class="click-marker" aria-label="Predicted click location"></svg></div><div class="pane-caption" id="right-caption"></div></article>
+      </div>
+      <div class="compare-transport">
+        <button id="compare-prev" class="transport-small">‹</button><button id="compare-play" class="play">▶</button><button id="compare-next" class="transport-small">›</button>
+        <div class="scrubber-wrap"><input id="compare-scrubber" type="range" min="0" max="0" value="0"><div class="scrubber-labels"><span>Synchronized tick <b id="compare-tick">0</b></span><span id="compare-total"></span></div></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

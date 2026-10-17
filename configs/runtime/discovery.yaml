@@ -1,0 +1,78 @@
+# Optional Qwen3-VL 2B controls discovery. Attach with --title "Chess Titans"
+# or another application with a visible controls/keybindings screen.
+
+capture:
+  method: auto
+  cursor_mode: both
+  vlm_image_mode: cursor
+discovery:
+  backend: transformers
+  model: Qwen/Qwen3-VL-2B-Instruct
+  max_new_tokens: 1024
+  frame_cadence_ms: 2000
+  delay_ms: 3000
+  pause_key: f1
+  exit_keywords:
+  - no more mappings
+  - discovery complete
+  - all mappings found
+  - no additional mappings
+  generate_synonyms: false
+  repetition_limit: 3
+  system_prompts:
+    specific: |
+      You are reading a game's settings or controls menu to discover key bindings.
+
+      Your task:
+      1. Navigate to the settings or controls screen. To navigate, output the pixel coordinates of the element to click.
+      2. Read all visible key/button bindings from the controls screen.
+      3. Scroll down if needed to see all bindings.
+
+      You MUST use EXACTLY one of these formats per line:
+      - click <x> <y>          (x and y are pixel coordinates, e.g. click 512 384)
+      - scroll 0 -3
+      - <action name>: <key>   (e.g. move forward: w)
+      - no more mappings
+
+      IMPORTANT: "click" must always be followed by two numbers (pixel coordinates). Never write "click Options" or "click Settings" — find the pixel position and write "click 400 300".
+
+      Rules:
+      - Report bindings ONLY when you can clearly read them on screen.
+      - One binding per line.
+      - Use lowercase key names (w, a, s, d, space, left click, etc.).
+      - Do NOT guess or assume bindings. Only report what you see.
+    universal: |
+      You are reading a game's settings or controls menu to discover key bindings.
+
+      Your task:
+      1. Navigate to the settings or controls screen. To navigate, output the pixel coordinates of the element to click.
+      2. Read all visible key/button bindings from the controls screen.
+      3. Scroll down if needed to see all bindings.
+
+      You MUST use EXACTLY one of these formats per line:
+      - click <x> <y>          (x and y are pixel coordinates, e.g. click 512 384)
+      - scroll 0 -3
+      - <action name>: <key>   (e.g. move forward: w)
+      - no more mappings
+
+      IMPORTANT: "click" must always be followed by two numbers (pixel coordinates). Never write "click Options" or "click Settings" — find the pixel position and write "click 400 300".
+
+      Rules:
+      - Report bindings ONLY when you can clearly read them on screen.
+      - One binding per line.
+      - Use lowercase key names (w, a, s, d, space, left click, etc.).
+      - Do NOT guess or assume bindings. Only report what you see.
+  user_prompts:
+    specific: |
+      Look at this game menu screenshot.
+      If you are not yet in the controls/keybindings settings, use "click <x> <y>" with pixel coordinates to navigate there.
+      If you can see control bindings, report each one as "<action>: <key>".
+      If you need to scroll, use "scroll 0 -3".
+      When done, respond with "no more mappings".
+    universal: |
+      Look at this game menu screenshot.
+      If you are not yet in the controls/keybindings settings, use "click <x> <y>" with pixel coordinates to navigate there.
+      If you can see control bindings, report each one as "<action>: <key>".
+      If you need to scroll, use "scroll 0 -3".
+      When done, respond with "no more mappings".
+  output_dir: outputs/action-discovery
