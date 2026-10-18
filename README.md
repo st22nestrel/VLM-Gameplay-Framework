@@ -119,3 +119,7 @@ The source lives in `src/actions`, `src/backends`, `src/capture`, `src/loop`,
 `src/discovery`, `src/suites`, and `src/window_session.py`.
 
 Maintainers: [explicit publishing workflow](docs/publishing.md).
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
