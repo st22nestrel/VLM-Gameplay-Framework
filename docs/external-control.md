@@ -18,9 +18,12 @@ python -m src.control step --title "Your Game" --action move_forward --duration-
 `--title` must match exactly one visible window. Use `--hwnd 0x12345` from
 `list-windows` when titles are ambiguous. Each one-shot command attaches afresh;
 no daemon or session file is needed. `observe` and `step` bring the target to
-the foreground by default. `--no-focus` leaves focus alone; live steps still
-require the target to be focused. `--dry-run` sends no input, changes no focus,
-and skips action/settle waits, but still captures a real screenshot.
+the foreground by default. `--no-focus` leaves focus alone. Both commands require
+the target to be focused, including with `--no-focus` and `--dry-run`. `--dry-run`
+sends no input, changes no focus, and skips action/settle waits, but still captures
+a real screenshot. Focus is checked before and after capture; a failed check
+returns a `focus_lost` error without saving or returning the screenshot. These
+checks cannot detect a brief focus change entirely between checks.
 
 Combine actions with repeated `--action` flags:
 
@@ -100,7 +103,7 @@ uses the existing PrintWindow-to-BitBlt fallback. Desktop-based methods capture
 overlapping windows too, so keep the game visible.
 
 Exit codes: `0` success, `2` invalid arguments/actions, `1` other failures,
-`130` Ctrl+C. If capture fails after a step, the error includes the completed
+`130` Ctrl+C. If capture fails or loses focus after a step, the error includes the completed
 step summary and `actions_may_have_executed`; observe again before retrying.
 
 ## Persistent JSON-lines mode

@@ -104,10 +104,52 @@ def test_partial_execution_always_releases_holds_and_taps(game, failure):
 
 def test_focus_loss_aborts_and_releases(game):
     game.focus = False
-    game.session.is_foreground.return_value = False
+    game.session.is_foreground.side_effect = [True, False]
     with pytest.raises(control.ControlError) as error:
         game.step(actions=["move_forward"], duration_ms=1000)
     assert error.value.code == "focus_lost"
+    game.executor.release_all.assert_called_once()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+@pytest.mark.parametrize("operation", ["observe", "step"])
+def test_unfocused_requests_do_not_capture_or_execute(game, monkeypatch, dry_run, operation):
+    game.focus = False
+    game.dry_run = dry_run
+    game.session.is_foreground.return_value = False
+    capture = MagicMock()
+    monkeypatch.setattr(control, "capture_frame", capture)
+    with pytest.raises(control.ControlError) as error:
+        if operation == "observe":
+            game.observe()
+        else:
+            game.step(actions=["move_forward"], duration_ms=0, settle_ms=0)
+    assert error.value.code == "focus_lost"
+    capture.assert_not_called()
+    game.executor.execute_tick.assert_not_called()
+    game.session.focus.assert_not_called()
+
+
+def test_focus_loss_during_capture_discards_frame(game, monkeypatch):
+    game.session.is_foreground.side_effect = [True, True, False]
+    save = MagicMock()
+    monkeypatch.setattr(control, "save_frame_screenshots", save)
+    with pytest.raises(control.ControlError) as error:
+        game.observe()
+    assert error.value.code == "focus_lost"
+    save.assert_not_called()
+
+
+def test_focus_loss_after_step_preserves_summary_and_releases(game, monkeypatch):
+    game.session.is_foreground.side_effect = [True, False]
+    capture = MagicMock()
+    monkeypatch.setattr(control, "capture_frame", capture)
+    with pytest.raises(control.ControlError) as error:
+        game.step(actions=["move_forward"], duration_ms=0, settle_ms=0)
+    assert error.value.code == "focus_lost"
+    assert error.value.details["actions_may_have_executed"]
+    assert error.value.details["step"]["inputs_released"]
+    capture.assert_not_called()
     game.executor.release_all.assert_called_once()
 
 

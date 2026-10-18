@@ -1,9 +1,15 @@
-# VLM Window Agent
+# VLM Gameplay Framework & cli tools
 
 Run a vision-language model against a Windows application: capture its window,
 ask the model for an action, and execute keyboard/mouse input. The examples target
 Chess Titans; change the prompts and action definitions to control another game
 or application. Compatibility depends on the application's capture and input behavior.
+
+Capture targets the game window's client area. Keep it visible and focused:
+desktop capture methods can include overlapping windows. The control CLI checks
+focus before and after capture and rejects screenshots on focus loss. The model
+loop guards input, but still sends model requests when unfocused.
+The CLI does not restrict a coding agent's access to its other tools.
 
 Includes a game control CLI for external coding agents and shell scripts, local
 Transformers inference (including LoRA adapters), OpenAI-compatible servers and

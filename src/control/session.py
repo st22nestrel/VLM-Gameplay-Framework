@@ -135,9 +135,17 @@ class GameSession:
             raise ControlError("target_unavailable", "Restore the minimized target window first")
         if self.focus and not self.dry_run and not self.session.focus():
             raise ControlError("focus_failed", "Could not focus target window")
+        self._require_focus()
+
+    def _require_focus(self):
+        if not self.session.is_foreground():
+            raise ControlError("focus_lost", "Target must remain focused; no screenshot returned")
 
     def _observation(self) -> dict:
+        self._require_focus()
         frame = capture_frame(self.session, self.method)
+        # Discard the frame if focus changed while the backend was capturing.
+        self._require_focus()
         if frame is None:
             raise ControlError("capture_failed", "No frame returned by capture backend")
         path = self.out / f"frame_{time.time_ns()}_{uuid.uuid4().hex[:8]}.png"
@@ -238,6 +246,9 @@ class GameSession:
         }
         try:
             result["observation"] = self._observation()
+        except ControlError as exc:
+            raise ControlError(exc.code, str(exc), **exc.details, step=result,
+                               actions_may_have_executed=not self.dry_run) from exc
         except Exception as exc:
             raise ControlError("capture_failed", str(exc), step=result,
                                actions_may_have_executed=not self.dry_run) from exc
