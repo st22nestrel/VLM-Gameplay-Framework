@@ -47,6 +47,9 @@ The last command sends real input. Keep the target in the foreground; F1 toggles
 pause, and Ctrl+C stops the loop and releases held input. The default configuration
 is `configs/runtime/gameplay.yaml`, using Qwen3-VL 2B and normalized click coordinates.
 
+For control from an external agent or shell without local model inference, see
+[External Game Control CLI](docs/external-control.md) (`python -m src.control`).
+
 ## Included configurations
 
 | Runtime file in `configs/runtime/` | Purpose |

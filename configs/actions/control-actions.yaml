@@ -1,0 +1,41 @@
+# Starter bindings for external controllers. Customize for each game.
+# Coordinates are client pixels. aim(x,y) sends a delta from client center.
+actions:
+  - canonical_name: move_forward
+    execution: {type: hold_key, key: w, hold: true}
+  - canonical_name: move_backward
+    execution: {type: hold_key, key: s, hold: true}
+  - canonical_name: move_left
+    execution: {type: hold_key, key: a, hold: true}
+  - canonical_name: move_right
+    execution: {type: hold_key, key: d, hold: true}
+  - canonical_name: sprint
+    execution: {type: hold_key, key: shift, hold: true}
+  - canonical_name: crouch
+    execution: {type: hold_key, key: ctrl, hold: true}
+  - canonical_name: jump
+    execution: {type: press_key, key: space}
+  - canonical_name: interact
+    execution: {type: press_key, key: e}
+  - canonical_name: reload
+    execution: {type: press_key, key: r}
+  - canonical_name: enter
+    execution: {type: press_key, key: enter}
+  - canonical_name: escape
+    execution: {type: press_key, key: esc}
+  - canonical_name: tab
+    execution: {type: press_key, key: tab}
+  - canonical_name: shoot
+    execution: {type: mouse_button, button: left, hold: true}
+  - canonical_name: right_click
+    execution: {type: mouse_button, button: right}
+  - canonical_name: aim
+    execution: {type: mouse_move}
+    parameters:
+      - {name: x, type: int, required: true}
+      - {name: y, type: int, required: true}
+  - canonical_name: click_at
+    execution: {type: click_at}
+    parameters:
+      - {name: x, type: int, required: true}
+      - {name: y, type: int, required: true}
