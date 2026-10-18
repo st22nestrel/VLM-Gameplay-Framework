@@ -5,9 +5,10 @@ ask the model for an action, and execute keyboard/mouse input. The examples targ
 Chess Titans; change the prompts and action definitions to control another game
 or application. Compatibility depends on the application's capture and input behavior.
 
-Includes local Transformers inference (including LoRA adapters), OpenAI-compatible
-servers and providers, a managed llama.cpp server, action discovery, repeated live
-gameplay suites, analysis, and a browser-based results viewer. Session recording,
+Includes a game control CLI for external coding agents and shell scripts, local
+Transformers inference (including LoRA adapters), OpenAI-compatible servers and
+providers, a managed llama.cpp server, action discovery, repeated live gameplay
+suites, analysis, and a browser-based results viewer. Session recording,
 input playback, replay experiments, and private test data are excluded.
 
 ## Setup
@@ -31,7 +32,28 @@ Public Hugging Face models need no API key. For a provider or gated model, copy
 [.env.example](.env.example) to `.env` and replace the relevant dummy values.
 Do not copy a private worktree's `.env`, outputs, datasets, or model weights.
 
-## First run
+## Game control CLI
+
+**The CLI is meant to be used by (coding) agents.** Just tell your agent to use cli tools present in this repo to play game X until certain condition met (like destination reached, win etc.) and observe agent playing (you should not do anything else as game window must be in focus to be correctly captured).
+
+Use `python -m src.control` to capture screenshots and send timed keyboard/mouse
+actions from a shell or external coding agent, without loading a model or making
+API requests. Launch your game, then run:
+
+```powershell
+python -m src.control list-windows
+python -m src.control actions
+python -m src.control observe --title "Your Game"
+python -m src.control step --title "Your Game" --action move_forward --duration-ms 250
+```
+
+Commands return JSON with screenshot paths; each step releases its inputs before
+capturing the result. `--title` must match one visible window. Use `--dry-run` to
+capture without sending input, and `--action-config` to customize bindings.
+For structured clicks and persistent JSON-lines control via `serve`, see
+[External Game Control CLI](docs/external-control.md).
+
+## First run with a model
 
 Launch Chess Titans yourself, then run these commands from the repository root:
 
@@ -46,9 +68,6 @@ python -m src.cli.main gameplay --title "Chess Titans" --no-wait --max-ticks 10
 The last command sends real input. Keep the target in the foreground; F1 toggles
 pause, and Ctrl+C stops the loop and releases held input. The default configuration
 is `configs/runtime/gameplay.yaml`, using Qwen3-VL 2B and normalized click coordinates.
-
-For control from an external agent or shell without local model inference, see
-[External Game Control CLI](docs/external-control.md) (`python -m src.control`).
 
 ## Included configurations
 
