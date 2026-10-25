@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src import window_session
 from src.actions.executor import ActionExecutor
+from src.actions.input_settings import InputSettings
 from src.actions.schema import ParsedAction, load_action_config
 from src.actions.state import ActionState, HeldInput
 from src.capture import background_capture, dxcam_capture, fallback_capture, windows_graphics_capture
@@ -66,7 +67,12 @@ def capture_frame(session, method):
 
 class GameSession:
     def __init__(self, *, action_config=DEFAULT_ACTION_CONFIG, out=None,
-                 method="auto", cursor_mode="both", dry_run=False, focus=True):
+                 method="auto", cursor_mode="both", dry_run=False, focus=True,
+                 input_method="sendinput", require_focus=True):
+        try:
+            settings = InputSettings(input_method, require_focus)
+        except ValueError as exc:
+            raise ControlError("invalid_request", str(exc)) from exc
         if method not in CAPTURE_METHODS:
             raise ControlError("invalid_request", f"Unknown capture method: {method}")
         if cursor_mode not in ("raw", "cursor", "both"):
@@ -84,6 +90,8 @@ class GameSession:
         self.cursor_mode = cursor_mode
         self.dry_run = dry_run
         self.focus = focus
+        self.input_method = settings.input_method
+        self.require_focus = settings.require_focus
         self.session = None
         self.executor = None
         self.state = ActionState(self.config)
@@ -122,8 +130,11 @@ class GameSession:
         self.stop()
         self.session = session
         self._identity = (session.target.hwnd, session.target.pid)
-        self.executor = ActionExecutor(session, dry_run=self.dry_run)
-        return {"target": window_info(session.target), "dry_run": self.dry_run}
+        self.executor = ActionExecutor(session, dry_run=self.dry_run,
+                                       background=self.input_method == "postmessage",
+                                       require_focus=self.require_focus)
+        return {"target": window_info(session.target), "dry_run": self.dry_run,
+                "input_method": self.input_method, "require_focus": self.require_focus}
 
     def _prepare(self, *, background_observation=False):
         if self.session is None:
@@ -137,12 +148,12 @@ class GameSession:
             raise ControlError("target_unavailable", "Restore the minimized target window first")
         if background_observation:
             return
-        if self.focus and not self.dry_run and not self.session.focus():
+        if self.require_focus and self.focus and not self.dry_run and not self.session.focus():
             raise ControlError("focus_failed", "Could not focus target window")
         self._require_focus()
 
     def _require_focus(self):
-        if not self.session.is_foreground():
+        if self.require_focus and not self.session.is_foreground():
             raise ControlError("focus_lost", "Target must remain focused; no screenshot returned")
 
     def _observation(self) -> dict:
@@ -238,7 +249,10 @@ class GameSession:
                     raise ControlError("focus_failed", "Input skipped because the target lost focus")
                 deadline = time.perf_counter() + duration_ms / 1000
                 while time.perf_counter() < deadline:
-                    if not self.session.is_valid() or not self.session.is_foreground():
+                    if not self.session.is_valid() or self.session.is_minimized():
+                        raise ControlError("target_unavailable", "Target disappeared or was minimized during the step",
+                                           actions_may_have_executed=True)
+                    if self.require_focus and not self.session.is_foreground():
                         raise ControlError("focus_lost", "Target lost focus during the step",
                                            actions_may_have_executed=True)
                     time.sleep(min(0.02, max(0, deadline - time.perf_counter())))
@@ -255,6 +269,8 @@ class GameSession:
             "settle_ms": settle_ms,
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
             "execution": execution,
+            "input_method": self.input_method,
+            "require_focus": self.require_focus,
             "inputs_released": True,
         }
         try:

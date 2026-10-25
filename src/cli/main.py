@@ -29,6 +29,7 @@ from src.capture import background_capture, windows_graphics_capture, fallback_c
 from src.capture.cursor_overlay import normalize_cursor_mode, save_frame_screenshots
 from src.capture.frame import CapturedFrame
 from src.actions.schema import load_action_config
+from src.actions.input_settings import INPUT_METHODS, InputSettings
 from src.actions.parser import parse_vlm_text
 from src.suites.gameplay_suite import GameplaySuiteRunner, parse_run_selectors
 from src.suites.gameplay_suite_analysis import analyze_gameplay_suite
@@ -293,6 +294,14 @@ def cmd_parse_text(args: argparse.Namespace) -> None:
         print(f"  {a}")
 
 
+def _override_input_settings(raw_config, args):
+    """Apply explicit CLI overrides without replacing YAML defaults."""
+    if getattr(args, "input_method", None) is not None:
+        raw_config.setdefault("actions", {})["input_method"] = args.input_method
+    if getattr(args, "allow_unfocused", False):
+        raw_config.setdefault("actions", {})["require_focus"] = False
+
+
 def cmd_gameplay(args: argparse.Namespace) -> None:
     """Run the live VLM gameplay loop against a target window."""
     session = _resolve_target(args)
@@ -302,6 +311,7 @@ def cmd_gameplay(args: argparse.Namespace) -> None:
 
     delay_ms = args.delay if args.delay is not None else None
     raw_config = load_gameplay_config(config_path)
+    _override_input_settings(raw_config, args)
     runtime_config = GameplayRuntimeConfig.from_raw(
         raw_config,
         lora_base_model_source_override=args.lora_base_model_source,
@@ -423,6 +433,7 @@ def cmd_discover_actions(args: argparse.Namespace) -> None:
         print(f"ERROR: Invalid YAML in config: {e}")
         sys.exit(1)
 
+    _override_input_settings(config, args)
     disc = config.get("discovery", {})
 
     # Validate prompt-type matches a key in system_prompts
@@ -453,6 +464,7 @@ def cmd_discover_actions(args: argparse.Namespace) -> None:
         max_ticks=max_ticks,
         delay_ms=delay_ms,
         no_exit_keywords=args.no_exit_keywords,
+        input_settings=InputSettings.from_config(config.get("actions", {})),
         verbose=args.verbose,
         lora_base_model_source=args.lora_base_model_source,
     )
@@ -548,6 +560,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Path to runtime config YAML (default: configs/runtime/gameplay.yaml)")
     gp.add_argument("--out", type=str, help="Output directory (default: outputs/gameplay-runs/<run-id>)")
     gp.add_argument("--dry-run", action="store_true", help="Parse and plan but don't send input")
+    gp.add_argument("--input-method", choices=INPUT_METHODS, default=None,
+                    help="Override actions.input_method from the runtime config")
+    gp.add_argument("--allow-unfocused", action="store_true",
+                    help="Disable input focus guards, independently of input method")
     gp.add_argument("--no-wait", action="store_true",
                      help="Skip the wait-for-ready prompt")
     gp.add_argument("--max-ticks", type=int, default=None,
@@ -637,6 +653,10 @@ def build_parser() -> argparse.ArgumentParser:
     da.add_argument("--out", type=str,
                      help="Output directory (default: outputs/action-discovery/<run-id>)")
     da.add_argument("--dry-run", action="store_true", help="Parse VLM output but don't send input")
+    da.add_argument("--input-method", choices=INPUT_METHODS, default=None,
+                    help="Override actions.input_method from the runtime config")
+    da.add_argument("--allow-unfocused", action="store_true",
+                    help="Disable input focus guards, independently of input method")
     da.add_argument("--no-wait", action="store_true",
                      help="Skip the wait-for-ready prompt")
     da.add_argument("--delay", type=int, default=None,

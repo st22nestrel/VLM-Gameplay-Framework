@@ -12,7 +12,7 @@ the runtime base, then each run's overrides take precedence.
 | --- | --- |
 | `target_window` | `hwnd` or `title_substring`; gameplay CLI selects via `--hwnd` or `--title` |
 | `capture` | `method`: auto/dxcam/printwindow/bitblt/mss/background; after-action or background capture; cursor overlay; settle delay |
-| `actions` | `config_path` to action definitions and mouse coordinate conversion behavior |
+| `actions` | `config_path`, `input_method`, `require_focus`, and mouse coordinate conversion behavior |
 | `gameplay` | backend, model, prompts, token limit, output directory, delay, pause key, finish strategy |
 | `gameplay.model_settings` | sampling, thinking, coordinate normalization, LoRA, and generation schedules |
 | `gameplay.message_history` | none, all, last_n, or compact history; historical images and action context |
@@ -33,10 +33,33 @@ or `parse-text "click at 500 500" --action-config <path>` to inspect parsing.
 `capture.method: auto` tries DXCam if installed, then Win32 capture, then MSS.
 For covered, non-minimized windows, `capture.method: background` uses only
 PrintWindow and refuses desktop fallbacks. Support depends on the game's
-renderer. This controls screenshot acquisition; input still requires focus.
+renderer. This controls screenshot acquisition; input requires focus by default.
 It is independent of `capture.strategy: background`, which controls threading.
 Foreground input is the default; window visibility, focus, and permissions affect
 whether a particular application accepts capture/input.
+
+Input transport and focus requirements are independent settings for gameplay
+and discovery:
+
+```yaml
+actions:
+  input_method: postmessage  # sendinput (default) | postmessage (experimental)
+  require_focus: false       # default: true; false skips input focus checks
+capture:
+  method: background        # screenshot backend, independent of input
+```
+
+`gameplay` and `discover-actions` accept `--input-method sendinput|postmessage`
+and `--allow-unfocused` as overrides. Suites inherit the settings through their
+runtime configs/overrides; use `game.focus: false` to also disable suite launch
+activation. The external control CLI and chess replay accept the same flags.
+
+PostMessage handles keyboard, mouse movement and plain mouse buttons; plain
+buttons currently target the client center. `click_at` retains SetCursorPos +
+SendInput for both methods. With `require_focus: false`, direct input can reach
+another foreground application. The option permits experimentation; it does
+not change which application accepts injected input. Use background screenshots
+when covering the target; desktop capture can include the covering window.
 
 The optional freeze feature is retained but disabled by default. It needs a
 separate `xspeedhack` installation and permissions to attach to the target.

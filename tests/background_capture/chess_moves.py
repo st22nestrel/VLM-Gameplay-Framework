@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.control.session import ControlError, GameSession
+from src.actions.input_settings import INPUT_METHODS
 from src.window_session import enumerate_windows
 
 FIXTURES = Path(__file__).with_name("fixtures") / "chess_moves"
@@ -71,7 +72,8 @@ def reset_game(game):
         return  # F2 on a pristine board starts immediately.
     if len(dialogs) != 1:
         raise RuntimeError("Unexpected Chess Titans dialogs; dismiss them before replay")
-    dialog = GameSession(method="background", cursor_mode="raw", out=game.out)
+    dialog = GameSession(method="background", cursor_mode="raw", out=game.out,
+                         input_method=game.input_method, require_focus=game.require_focus)
     try:
         dialog.attach(hwnd=dialogs[0].hwnd)
         observation = dialog.observe()
@@ -150,6 +152,9 @@ def main(argv=None):
     parser.add_argument("--opponent-wait", type=float, default=3.0, help="Minimum wait, 3..5 seconds")
     parser.add_argument("--timeout", type=float, default=60.0, help="Per-turn timeout in seconds")
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--input-method", choices=INPUT_METHODS, default="sendinput")
+    parser.add_argument("--allow-unfocused", action="store_true",
+                        help="Skip automatic activation and all focus guards with either input sender")
     args = parser.parse_args(argv)
     if sys.platform != "win32":
         parser.error("Requires an unlocked Windows desktop")
@@ -158,12 +163,13 @@ def main(argv=None):
     out = (args.out or ROOT / "outputs/background_capture" /
            f"chess_moves_{datetime.now():%Y%m%d_%H%M%S_%f}").resolve()
     out.mkdir(parents=True, exist_ok=True)
-    report = {}
+    report = {"input_method": args.input_method, "require_focus": not args.allow_unfocused}
     game = None
     try:
         session = open_game(args.exe)
         game = GameSession(action_config=FIXTURES / "actions.yaml", method="background",
-                           cursor_mode="raw", out=out)
+                           cursor_mode="raw", out=out, input_method=args.input_method,
+                           require_focus=not args.allow_unfocused)
         game.attach(hwnd=session.target.hwnd)
         if args.new_game:
             reset_game(game)

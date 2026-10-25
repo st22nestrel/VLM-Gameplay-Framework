@@ -57,6 +57,24 @@ independent of session construction so the same sequence can later exercise a
 background input implementation. A future covered-window test must also assert
 that its covering window retains focus and the real cursor stays unchanged.
 
+Select the input sender and focus policy independently:
+
+```powershell
+python tests/background_capture/chess_moves.py --new-game --input-method postmessage
+python tests/background_capture/chess_moves.py --input-method postmessage --allow-unfocused
+python tests/background_capture/chess_moves.py --input-method sendinput --allow-unfocused
+```
+
+Defaults remain `sendinput` with focus required. `--allow-unfocused` skips
+automatic activation and focus guards for either sender. Settings are included
+in `results.json` and step records. The game/dialog sessions use the same settings.
+Prepare/reset the board while focused before trying a covered replay, then omit
+`--new-game` for that replay. F2 and `click_at` still use direct input where
+applicable; disabling focus checks can send input to a covering application.
+Both input methods currently implement the six `click_at` actions with
+SetCursorPos + SendInput, so this switch alone does not make chess clicks work
+through a covering window.
+
 ## Interactive Chess Titans test
 
 ```powershell
@@ -112,6 +130,7 @@ The live matrix covers GDI (Tk canvas) and GPU-rendered OpenGL (SDL/pygame):
 | Freshness | Changing content while covered appears in the next capture |
 | Positive control | MSS sees the magenta cover, proving actual occlusion |
 | Focus and position | Cover stays foreground; target does not move |
+| Input focus policy | Both senders reject an unfocused wait by default and allow it with `--allow-unfocused`, keeping cover focus and cursor position |
 | Minimized target | No frame; target remains minimized |
 
 OpenGL cases skip if the optional test dependency `pygame` is absent. The normal

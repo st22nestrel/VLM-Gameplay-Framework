@@ -545,6 +545,8 @@ class GameplayLoop:
         # Action config
         self.action_config = config.action_config
         self.disable_center_delta_conversion = config.disable_center_delta_conversion
+        self.input_method = config.input_method
+        self.require_focus = config.require_focus
 
         # Pause/resume hotkey
         self.pause_key: Optional[str] = config.pause_key
@@ -1973,6 +1975,8 @@ class GameplayLoop:
             self.session,
             dry_run=self.dry_run,
             disable_center_delta_conversion=self.disable_center_delta_conversion,
+            background=self.input_method == "postmessage",
+            require_focus=self.require_focus,
         )
 
         # Start pause/resume hotkey listener
@@ -2154,6 +2158,8 @@ class GameplayLoop:
             "thinking_budget": self._thinking_budget,
             "finish_strategy": self.finish_strategy_name,
             "capture_method": self.capture_method,
+            "input_method": self.input_method,
+            "require_focus": self.require_focus,
             "cursor_mode": self.cursor_mode,
             "vlm_image_mode": self.vlm_image_mode,
             "pause_key": self.pause_key,

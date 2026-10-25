@@ -126,3 +126,33 @@ def test_control_cli_observes_covered_window_without_focusing(target, tmp_path):
         assert image.getpixel((50, 50)) == (32, 192, 64)
         assert image.getpixel((250, 150)) == (32, 64, 192)
     assert win32gui.GetForegroundWindow() == cover
+
+
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage"])
+def test_control_cli_allows_unfocused_wait_with_either_sender(target, tmp_path, input_method):
+    import win32api
+    import win32gui
+
+    session, send, cover = target
+    send("full")
+    cursor = win32api.GetCursorPos()
+    command = [sys.executable, "-m", "src.control", "step", "--hwnd", str(session.target.hwnd),
+               "--method", "background", "--cursor-mode", "raw", "--out", str(tmp_path),
+               "--input-method", input_method, "--actions", "[]", "--duration-ms", "25",
+               "--settle-ms", "0", "--no-focus"]
+    # Requiring focus still rejects a covered target for either input sender.
+    blocked = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    assert blocked.returncode == 1, blocked.stderr + blocked.stdout
+    assert json.loads(blocked.stdout)["error"]["code"] == "focus_lost"
+    # Explicitly disable the requirement; this empty step sends no desktop input.
+    allowed = subprocess.run(command + ["--allow-unfocused"], capture_output=True, text=True, timeout=15)
+    assert allowed.returncode == 0, allowed.stderr + allowed.stdout
+    result = json.loads(allowed.stdout)["result"]
+    assert result["input_method"] == input_method
+    assert result["require_focus"] is False
+    assert result["execution"]["focus_ok"] is False
+    assert result["execution"]["skipped"] is False
+    assert result["observation"]["foreground"] is False
+    assert result["inputs_released"]
+    assert win32gui.GetForegroundWindow() == cover
+    assert win32api.GetCursorPos() == cursor

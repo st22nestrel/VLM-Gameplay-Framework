@@ -7,8 +7,11 @@ or application. Compatibility depends on the application's capture and input beh
 
 Capture targets the game window's client area. Keep it visible and focused:
 desktop capture methods can include overlapping windows. The control CLI checks
-focus before and after capture and rejects screenshots on focus loss. The model
-loop guards input, but still sends model requests when unfocused.
+focus before and after capture and rejects screenshots on focus loss by default.
+The model loop guards input by default, but still sends model requests when unfocused.
+Use `--input-method sendinput|postmessage` to select the input sender and
+`--allow-unfocused` to independently skip focus guards for experiments. `click_at`
+currently moves the real cursor and sends direct clicks in either input mode.
 For screenshots of covered, non-minimized windows, use
 `observe --method background --cursor-mode raw`. This leaves focus alone and
 uses PrintWindow without any desktop-capture fallback. Support depends on the

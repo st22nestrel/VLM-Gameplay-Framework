@@ -18,7 +18,7 @@ python -m src.control step --title "Your Game" --action move_forward --duration-
 `--title` must match exactly one visible window. Use `--hwnd 0x12345` from
 `list-windows` when titles are ambiguous. Each one-shot command attaches afresh;
 no daemon or session file is needed. `observe` and `step` bring the target to
-the foreground by default. `--no-focus` leaves focus alone. Both commands require
+the foreground by default. `--no-focus` leaves focus alone. By default both commands require
 the target to be focused, including with `--no-focus` and `--dry-run`. `--dry-run`
 sends no input, changes no focus, and skips action/settle waits, but still captures
 a real screenshot. Focus is checked before and after capture; a failed check
@@ -27,6 +27,48 @@ checks cannot detect a brief focus change entirely between checks.
 The exception is `observe --method background`, which captures a covered,
 non-minimized target without changing or requiring focus; see
 [background screenshots](#background-window-screenshots).
+
+### Input sender and focus policy
+
+`--input-method sendinput|postmessage` selects the input sender (default:
+`sendinput`). Independently, `--allow-unfocused` skips automatic activation and
+all foreground-focus checks before, during and after a step or observation.
+These options also apply to `serve` and persist across `attach` requests.
+Window existence, identity, minimized-state checks and input cleanup remain enabled.
+
+| Options | Activates target before input | Requires foreground focus |
+| --- | --- | --- |
+| Defaults | Yes | Yes |
+| `--no-focus` | No | Yes |
+| `--allow-unfocused` | No | No |
+
+Either input method supports every row. Selecting `postmessage` does not itself
+disable focus checks. `--no-focus --allow-unfocused` behaves like `--allow-unfocused`.
+
+```powershell
+python -m src.control step --title "Your Game" --action enter --input-method postmessage --allow-unfocused --method background --cursor-mode raw
+python -m src.control step --title "Your Game" --action enter --input-method sendinput --allow-unfocused --method background --cursor-mode raw
+```
+
+`sendinput` uses the system input stream; with focus checks disabled, input may
+reach the foreground application. Experimental `postmessage` sends keyboard,
+mouse movement and plain mouse-button messages to the target window. Plain
+mouse buttons currently use the client center. **`click_at` still uses
+SetCursorPos + SendInput in both modes**, so it moves the real cursor and is not
+yet a covered-window click implementation. Games may ignore posted messages.
+
+Screenshot selection is separate: `--method background` uses PrintWindow;
+desktop capture methods can include covering windows when unfocused capture is allowed.
+Responses record `input_method` and `require_focus` for reproducibility.
+
+The Python API exposes the same independent options:
+
+```python
+game = GameSession(method="background", input_method="postmessage", require_focus=False)
+```
+
+`focus=False` retains the old `--no-focus` behavior. `require_focus=False` skips
+activation even when `focus` has its default value of `True`.
 
 Combine actions with repeated `--action` flags:
 
@@ -131,8 +173,9 @@ Background capture is also available through `serve --method background`,
 `python -m src.cli.main capture-window --title "Your Game" --method background`,
 and runtime configuration `capture.method: background`. The runtime's
 `capture.strategy: background` is a separate setting for capture-thread timing.
-Input still requires foreground focus; `step` retains its existing focus and
-input guards, including when its screenshot method is `background`.
+Input requires foreground focus by default, including when its screenshot method
+is `background`. Use `--allow-unfocused` to explicitly bypass focus guards,
+independently of screenshot and input methods.
 
 See [the feature test suite](../tests/background_capture/README.md) for the
 GDI/OpenGL partial/full coverage and freshness checks.

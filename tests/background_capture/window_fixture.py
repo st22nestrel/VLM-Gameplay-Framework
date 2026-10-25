@@ -3,6 +3,7 @@
 import ctypes
 import json
 import os
+from pathlib import Path
 import queue
 import sys
 import threading
@@ -11,6 +12,9 @@ import tkinter as tk
 
 import win32con
 import win32gui
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.window_session import focus_window
 
 
 def main():
@@ -89,7 +93,8 @@ def main():
             cover.deiconify()
             root.update()
             # Only activate our own test cover, never the target during capture.
-            win32gui.SetForegroundWindow(cover_hwnd)
+            if not focus_window(cover_hwnd):
+                raise RuntimeError("Could not activate the test cover on this desktop")
         elif command == "change":
             paint("#e0b020")
         elif command == "minimize":

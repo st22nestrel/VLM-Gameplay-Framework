@@ -60,8 +60,9 @@ class GameplayTimingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
 
-    def make_loop(self, strategy="background", backend=None, max_ticks=3):
+    def make_loop(self, strategy="background", backend=None, max_ticks=3, actions=None):
         raw = {
+            "actions": actions or {},
             "capture": {"strategy": strategy, "cursor_mode": "off", "vlm_image_mode": "raw",
                         "post_action_settle_ms": 10},
             "gameplay": {
@@ -176,6 +177,23 @@ class GameplayTimingTests(unittest.TestCase):
     def test_legacy_config_has_no_inference_throttle(self):
         config = GameplayRuntimeConfig.from_raw({})
         self.assertEqual(config.inference_interval_ms, 0)
+
+    def test_gameplay_passes_input_and_focus_options_to_executor_and_log(self):
+        for method in ("sendinput", "postmessage"):
+            for require_focus in (False, True):
+                with self.subTest(method=method, require_focus=require_focus):
+                    loop = self.make_loop(max_ticks=1, actions={"input_method": method,
+                                                               "require_focus": require_focus})
+                    executor = Mock()
+                    executor.execute_tick.return_value = {"skipped": False, "dry_run": False}
+                    with patch("src.loop.gameplay_loop._do_capture", side_effect=lambda *args: frame()), \
+                            patch("src.loop.gameplay_loop.ActionExecutor", return_value=executor) as factory, \
+                            redirect_stdout(io.StringIO()):
+                        log = yaml.safe_load(loop.run().read_text())
+                    self.assertEqual(factory.call_args.kwargs["background"], method == "postmessage")
+                    self.assertEqual(factory.call_args.kwargs["require_focus"], require_focus)
+                    self.assertEqual(log["input_method"], method)
+                    self.assertEqual(log["require_focus"], require_focus)
 
 
 class GemmaSuiteTests(unittest.TestCase):

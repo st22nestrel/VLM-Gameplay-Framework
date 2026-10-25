@@ -7,13 +7,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 
-def pytest_addoption(parser):
-    parser.addoption("--live-chess-moves", action="store_true",
-                     help="Reset Chess Titans and replay three real moves (Windows desktop required)")
-    parser.addoption("--live-background-capture", action="store_true",
-                     help="Create temporary windows to test real occlusion (Windows desktop required)")
-
-
 def pytest_collection_modifyitems(config, items):
     for item in items:
         if "test_live_capture.py" in str(item.path) and (
