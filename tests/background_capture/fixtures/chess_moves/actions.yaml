@@ -1,4 +1,4 @@
-﻿actions:
+actions:
   - canonical_name: new_game
     execution: {type: press_key, key: f2}
   - canonical_name: click_at

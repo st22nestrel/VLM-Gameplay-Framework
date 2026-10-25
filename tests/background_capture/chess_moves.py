@@ -59,7 +59,8 @@ def starting_error(image):
 
 
 def click(game, position, settle_ms):
-    return game.step(actions=[{"name": "click_at", "params": dict(zip(("x", "y"), position))}],
+    return game.step(actions=[{"name": "click_at",
+                               "params": dict(zip(("x", "y"), position))}],
                      duration_ms=0, settle_ms=settle_ms)
 
 
@@ -72,7 +73,8 @@ def reset_game(game):
         return  # F2 on a pristine board starts immediately.
     if len(dialogs) != 1:
         raise RuntimeError("Unexpected Chess Titans dialogs; dismiss them before replay")
-    dialog = GameSession(method="background", cursor_mode="raw", out=game.out,
+    dialog = GameSession(action_config=FIXTURES / "actions.yaml",
+                         method="background", cursor_mode="raw", out=game.out,
                          input_method=game.input_method, require_focus=game.require_focus)
     try:
         dialog.attach(hwnd=dialogs[0].hwnd)
@@ -90,19 +92,37 @@ def reset_game(game):
         dialog.stop()
 
 
-def replay(game, *, opponent_wait=3.0, timeout=60.0, report=None):
+def wait_for_starting_board(game, *, timeout=15.0, report=None):
+    """A window can exist while the game is still loading or rotating its camera."""
+    report = report if report is not None else {}
+    deadline = time.monotonic() + timeout
+    polls = report.setdefault("startup_polls", [])
+    announced = False
+    while True:
+        observation = game.observe()
+        report["initial"] = observation
+        image = frame(observation)
+        error = starting_error(image)
+        polls.append({"observation": observation, "starting_error": error})
+        if error <= 4:
+            return image
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Starting board/layout differs from the recorded fresh White board "
+                               f"({error:.2f}) after waiting {timeout:g}s; start a new game, use the "
+                               "recorded theme/camera and 800x496 client size")
+        if not announced:
+            print("Waiting for the fresh White board (loading/camera animation)...", flush=True)
+            announced = True
+        time.sleep(0.5)
+
+
+def replay(game, *, opponent_wait=3.0, timeout=60.0, startup_timeout=15.0, report=None):
     """Same click sequence and visual assertions can serve a future input backend."""
     if not 3 <= opponent_wait <= 5 or timeout <= opponent_wait:
         raise ValueError("opponent_wait must be 3..5 seconds and timeout must exceed it")
     report = report if report is not None else {}
     report.update(status="running", moves=[])
-    observation = game.observe()
-    report["initial"] = observation
-    initial = frame(observation)
-    error = starting_error(initial)
-    if error > 4:
-        raise RuntimeError(f"Starting board/layout differs from the recorded fresh White board ({error:.2f}); "
-                           "start a new game, use the recorded theme/camera and 800x496 client size")
+    initial = wait_for_starting_board(game, timeout=startup_timeout, report=report)
     idle = initial.crop(THINKING_BOX)
     previous = initial
     for name, source, destination, filename in MOVES:
@@ -151,6 +171,8 @@ def main(argv=None):
                         help="Reset using F2; abandoning an existing game can count as a loss")
     parser.add_argument("--opponent-wait", type=float, default=3.0, help="Minimum wait, 3..5 seconds")
     parser.add_argument("--timeout", type=float, default=60.0, help="Per-turn timeout in seconds")
+    parser.add_argument("--startup-timeout", type=float, default=15.0,
+                        help="Wait for the initial board/loading/camera animation (default: 15 seconds)")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--input-method", choices=INPUT_METHODS, default="sendinput")
     parser.add_argument("--allow-unfocused", action="store_true",
@@ -160,26 +182,26 @@ def main(argv=None):
         parser.error("Requires an unlocked Windows desktop")
     if not 3 <= args.opponent_wait <= 5 or not args.opponent_wait < args.timeout <= 300:
         parser.error("--opponent-wait must be 3..5 and --timeout must exceed it (maximum 300)")
+    if not 0 < args.startup_timeout <= 300:
+        parser.error("--startup-timeout must be greater than 0 and at most 300 seconds")
     out = (args.out or ROOT / "outputs/background_capture" /
            f"chess_moves_{datetime.now():%Y%m%d_%H%M%S_%f}").resolve()
     out.mkdir(parents=True, exist_ok=True)
     report = {"input_method": args.input_method, "require_focus": not args.allow_unfocused}
     game = None
     try:
-        session = open_game(args.exe)
         game = GameSession(action_config=FIXTURES / "actions.yaml", method="background",
                            cursor_mode="raw", out=out, input_method=args.input_method,
                            require_focus=not args.allow_unfocused)
+        report.update(action_config=str(FIXTURES / "actions.yaml"),
+                      canonical_actions=game.config.canonical_names(),
+                      click_action="click_at", python=sys.executable)
+        session = open_game(args.exe)
         game.attach(hwnd=session.target.hwnd)
         if args.new_game:
             reset_game(game)
-            # New-game camera rotation takes several seconds; never click through it.
-            deadline = time.monotonic() + 15
-            while starting_error(frame(game.observe())) > 4:
-                if time.monotonic() >= deadline:
-                    raise RuntimeError("Fresh White board did not appear within 15 seconds")
-                time.sleep(0.5)
-        replay(game, opponent_wait=args.opponent_wait, timeout=args.timeout, report=report)
+        replay(game, opponent_wait=args.opponent_wait, timeout=args.timeout,
+               startup_timeout=args.startup_timeout, report=report)
         print("Verified all three White moves and opponent replies. Chess Titans is left open.")
         return 0
     except KeyboardInterrupt:

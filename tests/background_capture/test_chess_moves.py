@@ -17,6 +17,12 @@ moves = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(moves)
 
 
+def fake_game():
+    game = MagicMock()
+    game.config = moves.GameSession(action_config=moves.FIXTURES / "actions.yaml").config
+    return game
+
+
 @pytest.mark.parametrize("state", [0, 1, 2, 3])
 def test_visual_check_distinguishes_every_move_from_missing_or_extra_moves(state):
     references = [Image.open(moves.FIXTURES / "initial.png").crop(moves.PAWN_STRIP)]
@@ -30,7 +36,7 @@ def test_visual_check_distinguishes_every_move_from_missing_or_extra_moves(state
 
 
 def test_no_op_input_cannot_pass_replay_or_advance_to_second_move(monkeypatch):
-    game = MagicMock()
+    game = fake_game()
     observation = {"screenshot_raw": str(moves.FIXTURES / "initial.png")}
     game.observe.return_value = observation
     game.step.return_value = {"observation": observation}
@@ -57,7 +63,7 @@ def test_correct_white_move_does_not_advance_before_opponent_finishes(condition,
     path = tmp_path / "opponent_unfinished.png"
     image.save(path)
     unfinished = {"screenshot_raw": str(path)}
-    game = MagicMock()
+    game = fake_game()
     game.observe.side_effect = itertools.chain(
         [{"screenshot_raw": str(moves.FIXTURES / "initial.png")}], itertools.repeat(unfinished))
     game.step.return_value = {"observation": unfinished}
@@ -76,11 +82,58 @@ def test_wrong_starting_board_sends_no_input(tmp_path):
     image.paste(Image.open(moves.FIXTURES / "after_c3.png"), moves.PAWN_STRIP[:2])
     path = tmp_path / "wrong_start.png"
     image.save(path)
-    game = MagicMock()
+    game = fake_game()
     game.observe.return_value = {"screenshot_raw": str(path)}
     with pytest.raises(RuntimeError, match="Starting board/layout differs"):
-        moves.replay(game)
+        moves.replay(game, startup_timeout=0)
     game.step.assert_not_called()
+
+
+def test_loading_screen_is_polled_without_input_until_initial_board_appears(tmp_path, monkeypatch):
+    path = tmp_path / "loading.png"
+    Image.new("RGB", (800, 496), "black").save(path)
+    game = fake_game()
+    game.observe.side_effect = [
+        {"screenshot_raw": str(path)},
+        {"screenshot_raw": str(path)},
+        {"screenshot_raw": str(moves.FIXTURES / "initial.png")},
+    ]
+    sleeps = []
+    monkeypatch.setattr(moves.time, "sleep", sleeps.append)
+    report = {}
+    image = moves.wait_for_starting_board(game, report=report)
+    assert moves.starting_error(image) == 0
+    assert len(report["startup_polls"]) == 3
+    assert report["initial"]["screenshot_raw"].endswith("initial.png")
+    assert sleeps == [0.5, 0.5]
+    game.step.assert_not_called()
+
+
+def test_loading_screen_timeout_never_sends_clicks(tmp_path, monkeypatch):
+    path = tmp_path / "loading.png"
+    Image.new("RGB", (800, 496), "black").save(path)
+    game = fake_game()
+    game.observe.return_value = {"screenshot_raw": str(path)}
+    monkeypatch.setattr(moves.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(moves.time, "sleep", lambda _: None)
+    ticks = itertools.count()
+    with pytest.raises(RuntimeError, match="after waiting 2s"):
+        moves.replay(game, startup_timeout=2)
+    assert game.observe.call_count == 2
+    game.step.assert_not_called()
+
+
+def test_click_uses_two_action_replay_fixture_and_real_control_parser(tmp_path, monkeypatch):
+    game = moves.GameSession(action_config=moves.FIXTURES / "actions.yaml",
+                             dry_run=True, out=tmp_path)
+    assert game.config.canonical_names() == ["new_game", "click_at"]
+    game.session = MagicMock()
+    game.session.get_client_rect.return_value = (0, 0, 800, 496)
+    monkeypatch.setattr(game, "_prepare", lambda: None)
+    monkeypatch.setattr(game, "_observation", lambda: {})
+    result = moves.click(game, (212, 346), 400)
+    assert result["actions"] == [{"canonical_name": "click_at", "params": {"x": 212, "y": 346}}]
+    assert result["plan"]["click_ats"] == [{"x": 212, "y": 346}]
 
 
 def test_real_chess_three_moves(request, tmp_path):

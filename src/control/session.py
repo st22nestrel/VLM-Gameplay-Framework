@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -78,6 +79,8 @@ class GameSession:
         if cursor_mode not in ("raw", "cursor", "both"):
             raise ControlError("invalid_request", "cursor_mode must be raw, cursor, or both")
         self.config = load_action_config(action_config)
+        print("Action config:", Path(action_config).resolve(), file=sys.stderr, flush=True)
+        print("Loaded actions:", self.config.canonical_names(), file=sys.stderr, flush=True)
         for action in self.config.actions.values():
             if action.execution.type not in {
                 "hold_key", "hold_keys", "press_key", "press_keys", "mouse_button", "mouse_move", "click_at"

@@ -88,7 +88,8 @@ class ActionConfig:
 def load_action_config(path: str | Path) -> ActionConfig:
     """Load an ActionConfig from a YAML file."""
     path = Path(path)
-    with open(path, "r") as f:
+    # Windows' locale encoding may decode a UTF-8 BOM into part of the actions key.
+    with open(path, "r", encoding="utf-8-sig") as f:
         raw = yaml.safe_load(f)
 
     separators = raw.get("separators", [" and ", ";", ",", "\n"])
