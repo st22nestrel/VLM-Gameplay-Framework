@@ -1,0 +1,2 @@
+# Optional process-local cursor compatibility for Chess Titans on Windows.
+frida>=17.0,<18; sys_platform == 'win32'

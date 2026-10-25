@@ -381,6 +381,11 @@ class ActionExecutor:
         for held in held_inputs:
             self._release_input(held)
 
+    def close(self) -> None:
+        """Release backend-owned inputs and detach any compatibility shim."""
+        if self._window_input is not None:
+            self._window_input.close()
+
     # ── private input methods ────────────────────────────────────────────
 
     def _press_input(self, held: HeldInput) -> None:

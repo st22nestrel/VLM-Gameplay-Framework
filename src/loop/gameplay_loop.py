@@ -2121,9 +2121,12 @@ class GameplayLoop:
                     "Cleanup: released %s",
                     [h.canonical_name for h in released],
                 )
-            if self._freeze_controller is not None:
-                self._freeze_controller.close()
-                self._freeze_controller = None
+            try:
+                executor.close()
+            finally:
+                if self._freeze_controller is not None:
+                    self._freeze_controller.close()
+                    self._freeze_controller = None
 
         log_path = self._write_log()
         print(f"\nGameplay loop complete. {len(self._tick_log)} ticks. Log: {log_path}")

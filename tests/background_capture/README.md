@@ -79,9 +79,35 @@ in `results.json` and step records. The game/dialog sessions use the same settin
 Prepare/reset the board while focused before trying a covered replay, then omit
 `--new-game` for that replay. F2 and `click_at` still use direct input where
 applicable; disabling focus checks can send input to a covering application.
-Both input methods currently implement the six `click_at` actions with
+The sendinput and legacy postmessage methods implement the six `click_at` actions with
 SetCursorPos + SendInput, so this switch alone does not make chess clicks work
 through a covering window.
+
+### Window-directed Chess Titans input
+
+```powershell
+python -m pip install -r requirements-windowmessage.txt
+python tests/background_capture/chess_moves.py --input-method windowmessage --allow-unfocused
+```
+
+This works with Chess Titans covered and inactive. Its mouse translator reads
+`GetCursorPos` instead of the coordinates carried in mouse messages. The backend
+therefore loads a temporary process-local Frida cursor hook for `ChessWindowClass`.
+Only the recipient thread's cursor reads during synchronous mouse dispatch see
+the virtual position; desktop cursor/focus stay unchanged. Keyboard messages
+stay queued so F2 still reaches the game's accelerator loop. Sessions detach
+the hook on stop. Other windows continue to use ordinary posted messages.
+
+For repeatable verification, the following runs the same replay behind an owned
+foreground window, checking focus and cursor at every observation:
+
+```powershell
+python tests/background_capture/chess_moves_covered.py --new-game
+```
+
+The actual covered-game replay passed all three moves and opponent replies.
+This confirms Chess Titans support; it does not establish DirectInput/Raw Input
+support for other games. See [implementation notes](../../docs/background-input.md).
 
 ## Interactive Chess Titans test
 

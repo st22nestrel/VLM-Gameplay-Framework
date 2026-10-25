@@ -1,6 +1,7 @@
 """Stateful, window-directed input without activating a window or moving the cursor.
 
-This sends legacy Win32 input messages. It does not emulate a hardware device,
+This sends legacy Win32 input messages, with a scoped process-local cursor
+compatibility shim for Chess Titans. It does not emulate a hardware device,
 change GetAsyncKeyState, or provide Raw Input / DirectInput events.
 """
 
@@ -9,6 +10,7 @@ from __future__ import annotations
 import sys
 import time
 import ctypes
+import logging
 from ctypes import wintypes
 
 if sys.platform == "win32":
@@ -71,6 +73,11 @@ class WindowMessageInput:
         self._point: tuple[int, int] | None = None
         self._mouse_target: int | None = None
         self._drag_target: int | None = None
+        self._cursor_bridge = None
+        # Keep ordinary windowmessage delivery injection-free. Chess Titans'
+        # input translator ignores LPARAM and reads GetCursorPos for every
+        # mouse event, so enable the scoped compatibility shim for that game.
+        self._needs_cursor_bridge = win32gui.GetClassName(self._hwnd) == "ChessWindowClass"
 
     def _root(self) -> int:
         if self._session.target.hwnd != self._hwnd:
@@ -91,7 +98,18 @@ class WindowMessageInput:
             raise RuntimeError("Input recipient disappeared or left the target window")
         # Let pywin32 propagate access-denied (UIPI), queue-full and invalid-HWND
         # errors. Never fall back to the desktop input stream.
-        win32api.PostMessage(hwnd, message, wparam, lparam)
+        if self._needs_cursor_bridge and 0x0200 <= message <= 0x0209:
+            if self._cursor_bridge is None:
+                from .process_cursor import ProcessCursor
+                _, pid = win32process.GetWindowThreadProcessId(self._hwnd)
+                self._cursor_bridge = ProcessCursor(pid)
+                logging.getLogger(__name__).info(
+                    "Chess Titans: enabled process-local cursor shim; desktop cursor unchanged")
+            screen = win32gui.ClientToScreen(self._hwnd, self._position())
+            self._cursor_bridge.dispatch(hwnd, message, wparam, lparam, screen)
+        else:
+            # Keyboard stays queued so TranslateAccelerator can handle F2 etc.
+            win32api.PostMessage(hwnd, message, wparam, lparam)
 
     def _keyboard_target(self) -> int:
         root = self._root()
@@ -216,3 +234,11 @@ class WindowMessageInput:
                 errors.append(exc)
         if errors:
             raise errors[0]
+
+    def close(self) -> None:
+        try:
+            self.release_all()
+        finally:
+            if self._cursor_bridge is not None:
+                self._cursor_bridge.close()
+                self._cursor_bridge = None

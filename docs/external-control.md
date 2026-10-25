@@ -50,10 +50,12 @@ python -m src.control step --title "Your Game" --action enter --input-method win
 python -m src.control step --title "Your Game" --action enter --input-method sendinput --allow-unfocused --method background --cursor-mode raw
 ```
 
-`windowmessage` posts keyboard, movement, buttons and `click_at` to the target,
+`windowmessage` sends keyboard, movement, buttons and `click_at` to the target,
 including child windows, with a virtual cursor and held-button/modifier state.
 It leaves foreground focus and the real cursor alone. Games must process Win32
 input messages while inactive; Raw Input/DirectInput polling is not emulated.
+Chess Titans uses an optional Frida cursor shim; install
+`requirements-windowmessage.txt` for that compatibility path.
 See [background input and the legacy experiment evaluation](background-input.md).
 
 `sendinput` uses the system input stream; with focus checks disabled, input may

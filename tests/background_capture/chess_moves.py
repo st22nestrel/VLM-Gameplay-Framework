@@ -176,7 +176,7 @@ def main(argv=None):
     parser.add_argument("--out", type=Path)
     parser.add_argument("--input-method", choices=INPUT_METHODS, default="sendinput")
     parser.add_argument("--allow-unfocused", action="store_true",
-                        help="Skip automatic activation and all focus guards with either input sender")
+                        help="Skip automatic activation and all focus guards with any input sender")
     args = parser.parse_args(argv)
     if sys.platform != "win32":
         parser.error("Requires an unlocked Windows desktop")

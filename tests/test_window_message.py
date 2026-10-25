@@ -19,6 +19,7 @@ def sender(monkeypatch):
     session.target.hwnd = 100
     session.is_foreground.return_value = False
     gui = SimpleNamespace(
+        GetClassName=lambda hwnd: "BackgroundInputTestReceiver",
         IsWindow=lambda hwnd: hwnd in (100, 101, 102),
         IsIconic=lambda hwnd: False,
         IsChild=lambda root, child: root == 100 and child in (101, 102),

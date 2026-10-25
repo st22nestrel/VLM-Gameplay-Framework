@@ -293,7 +293,10 @@ class GameSession:
 
     def stop(self) -> dict:
         if self.executor is not None:
-            self.executor.release_all(self.state.release_all())
+            try:
+                self.executor.release_all(self.state.release_all())
+            finally:
+                self.executor.close()
         self.session = None
         self.executor = None
         self._identity = None

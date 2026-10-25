@@ -6,6 +6,45 @@ The sender never activates the target, moves the desktop cursor, or falls back
 to SendInput. The game must support legacy Win32 input messages and continue
 processing them while inactive. This is not a universal background input device.
 
+## Chess Titans
+
+Chess Titans ignores the mouse message's coordinates and reads `GetCursorPos`
+inside its mouse input translator. Ordinary posted clicks therefore do nothing
+even when the game is foregrounded. Changing timing or using SendMessage alone
+does not fix this.
+
+`windowmessage` recognizes `ChessWindowClass` and uses a temporary Frida hook
+inside that process. During each synchronous mouse dispatch, `GetCursorPos`
+on the recipient's UI thread returns the virtual screen position. Outside that
+dispatch it returns the real cursor position. Keyboard messages remain posted
+so the game's accelerator loop still handles F2. The hook unloads when the
+session stops; it changes no game files. Other window classes do not use hooks.
+
+Install the optional dependency in the environment that runs the controller:
+
+```powershell
+python -m pip install -r requirements-windowmessage.txt
+python tests/background_capture/chess_moves.py --input-method windowmessage --allow-unfocused
+```
+
+The dependency is already installed in this machine's `transformers5`
+environment. Start on the recorded fresh board, or add `--new-game` to reset it.
+Leave the game restored; it can be covered by another window.
+
+For a fully covered replay with foreground/cursor assertions:
+
+```powershell
+python tests/background_capture/chess_moves_covered.py --new-game
+```
+
+This was verified against actual Chess Titans: all three White moves and
+opponent replies passed with an owned covering window retaining foreground
+focus and the desktop cursor unchanged. The hook is specific to cursor reads;
+it does not add Raw Input, DirectInput or device-state emulation.
+See [Frida's instrumentation API](https://frida.re/docs/javascript-api/).
+
+## General usage
+
 ```powershell
 conda activate transformers5
 python -m src.control step --title "Your Game" --input-method windowmessage --allow-unfocused --method background --cursor-mode raw --actions-file click.json
@@ -117,8 +156,9 @@ inactive must expose a setting or integration that permits background play.
 Changing PostMessage to SendMessage does not create device state either.
 
 For those games, a game/engine-specific integration (for example an input API
-inside an owned game) is required. This backend does not attach input queues,
-fake activation, inject code into the game, or modify its input-device settings.
+inside an owned game) is required. Ordinary windowmessage delivery does not
+attach input queues, fake activation, or modify input-device settings. The
+Chess Titans path injects the temporary cursor hook described above.
 Windows UIPI also restricts posting to processes at a higher integrity level;
 run the controller and target with matching permissions.
 

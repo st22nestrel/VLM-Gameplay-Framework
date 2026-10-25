@@ -16,6 +16,8 @@ For window-directed keys, movement, buttons and clicks, use
 `--input-method windowmessage --allow-unfocused --method background --cursor-mode raw`.
 This keeps the real cursor and foreground focus unchanged for games that accept
 Win32 messages while inactive; see [background input and experiment notes](docs/background-input.md).
+Chess Titans uses a temporary process-local cursor hook; install its optional
+dependency with `python -m pip install -r requirements-windowmessage.txt`.
 For screenshots of covered, non-minimized windows, use
 `observe --method background --cursor-mode raw`. This leaves focus alone and
 uses PrintWindow without any desktop-capture fallback. Support depends on the

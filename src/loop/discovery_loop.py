@@ -619,6 +619,8 @@ class DiscoveryLoop:
                 self._pause_controller = None
             self._stop_capture_thread()
 
+            executor.close()
+
         log_path = self._write_log()
         print(
             f"\nDiscovery complete. {len(self._tick_log)} ticks, "
