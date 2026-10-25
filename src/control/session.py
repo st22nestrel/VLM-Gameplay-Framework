@@ -12,12 +12,12 @@ from src import window_session
 from src.actions.executor import ActionExecutor
 from src.actions.schema import ParsedAction, load_action_config
 from src.actions.state import ActionState, HeldInput
-from src.capture import dxcam_capture, fallback_capture, windows_graphics_capture
+from src.capture import background_capture, dxcam_capture, fallback_capture, windows_graphics_capture
 from src.capture.cursor_overlay import save_frame_screenshots
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ACTION_CONFIG = ROOT / "configs/actions/control-actions.yaml"
-CAPTURE_METHODS = ("auto", "dxcam", "win32", "mss")
+CAPTURE_METHODS = ("auto", "dxcam", "win32", "mss", "background")
 
 
 class ControlError(Exception):
@@ -47,6 +47,8 @@ def capture_frame(session, method):
         "win32": windows_graphics_capture.capture_frame,
         "mss": fallback_capture.capture_frame,
     }
+    if method == "background":
+        return background_capture.capture_frame(session)
     if method != "auto":
         return backends[method](session)
     # A blank image from an earlier backend must not prevent fallback.
@@ -123,7 +125,7 @@ class GameSession:
         self.executor = ActionExecutor(session, dry_run=self.dry_run)
         return {"target": window_info(session.target), "dry_run": self.dry_run}
 
-    def _prepare(self):
+    def _prepare(self, *, background_observation=False):
         if self.session is None:
             raise ControlError("not_attached", "Attach to a game first")
         if not self.session.is_valid():
@@ -133,6 +135,8 @@ class GameSession:
             raise ControlError("target_unavailable", "Target window identity changed; attach again")
         if self.session.is_minimized():
             raise ControlError("target_unavailable", "Restore the minimized target window first")
+        if background_observation:
+            return
         if self.focus and not self.dry_run and not self.session.focus():
             raise ControlError("focus_failed", "Could not focus target window")
         self._require_focus()
@@ -142,10 +146,19 @@ class GameSession:
             raise ControlError("focus_lost", "Target must remain focused; no screenshot returned")
 
     def _observation(self) -> dict:
-        self._require_focus()
+        if self.method != "background":
+            self._require_focus()
         frame = capture_frame(self.session, self.method)
         # Discard the frame if focus changed while the backend was capturing.
-        self._require_focus()
+        if self.method != "background":
+            self._require_focus()
+        elif not self.session.is_valid() or self.session.is_minimized():
+            raise ControlError("target_unavailable", "Target disappeared or was minimized during capture")
+        if self.method == "background" and (
+            (self.session.target.hwnd, self.session.target.pid) != self._identity
+            or (frame is not None and frame.hwnd != self.session.target.hwnd)
+        ):
+            raise ControlError("target_unavailable", "Target window identity changed during capture")
         if frame is None:
             raise ControlError("capture_failed", "No frame returned by capture backend")
         path = self.out / f"frame_{time.time_ns()}_{uuid.uuid4().hex[:8]}.png"
@@ -162,7 +175,7 @@ class GameSession:
         }
 
     def observe(self) -> dict:
-        self._prepare()
+        self._prepare(background_observation=self.method == "background")
         return self._observation()
 
     def _parse_actions(self, actions) -> list[ParsedAction]:

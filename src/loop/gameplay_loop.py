@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageStat
 import yaml
 
 from src.window_session import WindowSession
-from src.capture import windows_graphics_capture, fallback_capture, dxcam_capture
+from src.capture import background_capture, windows_graphics_capture, fallback_capture, dxcam_capture
 from src.capture.cursor_overlay import save_frame_screenshots
 from src.capture.frame import CapturedFrame
 from src.actions.schema import ParsedAction
@@ -416,8 +416,10 @@ def _do_capture(session: WindowSession, method: str) -> Optional[CapturedFrame]:
 
     Args:
         session: WindowSession for the target window
-        method: Capture method to use ("dxcam", "mss", "printwindow", "bitblt", "auto")
+        method: "dxcam", "mss", "printwindow", "bitblt", "auto", or "background"
     """
+    if method == "background":
+        return background_capture.capture_frame(session)
     if method == "dxcam":
         return dxcam_capture.capture_frame(session)
     if method == "mss":

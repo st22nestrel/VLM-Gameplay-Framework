@@ -9,6 +9,10 @@ Capture targets the game window's client area. Keep it visible and focused:
 desktop capture methods can include overlapping windows. The control CLI checks
 focus before and after capture and rejects screenshots on focus loss. The model
 loop guards input, but still sends model requests when unfocused.
+For screenshots of covered, non-minimized windows, use
+`observe --method background --cursor-mode raw`. This leaves focus alone and
+uses PrintWindow without any desktop-capture fallback. Support depends on the
+game's renderer; see [background capture](docs/external-control.md#background-window-screenshots).
 The CLI does not restrict a coding agent's access to its other tools.
 
 Includes a game control CLI for external coding agents and shell scripts, local
@@ -50,6 +54,7 @@ API requests. Launch your game, then run:
 python -m src.control list-windows
 python -m src.control actions
 python -m src.control observe --title "Your Game"
+python -m src.control observe --title "Your Game" --method background --cursor-mode raw
 python -m src.control step --title "Your Game" --action move_forward --duration-ms 250
 ```
 

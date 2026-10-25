@@ -24,6 +24,9 @@ sends no input, changes no focus, and skips action/settle waits, but still captu
 a real screenshot. Focus is checked before and after capture; a failed check
 returns a `focus_lost` error without saving or returning the screenshot. These
 checks cannot detect a brief focus change entirely between checks.
+The exception is `observe --method background`, which captures a covered,
+non-minimized target without changing or requiring focus; see
+[background screenshots](#background-window-screenshots).
 
 Combine actions with repeated `--action` flags:
 
@@ -97,10 +100,42 @@ and a failed capture can look alike.
 Artifacts go to `outputs/control/<session-id>/` by default. Set `--out` to
 collect frames in a chosen directory. Filenames are unique across calls.
 Use `--cursor-mode raw|cursor|both` (default `both`) and
-`--method auto|dxcam|win32|mss` (default `auto`). Auto tries DXCam, Windows
+`--method auto|dxcam|win32|mss|background` (default `auto`). Auto tries DXCam, Windows
 PrintWindow/BitBlt, then MSS, skipping blank results where possible. `win32`
 uses the existing PrintWindow-to-BitBlt fallback. Desktop-based methods capture
 overlapping windows too, so keep the game visible.
+
+### Background window screenshots
+
+```powershell
+python -m src.control observe --title "Your Game" --method background --cursor-mode raw
+```
+
+`background` captures the client area with the existing PrintWindow backend,
+including when another window partly or fully covers the target. `observe`
+does not activate, move, or restore the target in this mode, even with the
+default focus setting. The target must exist and must not be minimized.
+The response reports `foreground: false` when appropriate.
+
+This mode never uses DXCam, MSS, or desktop BitBlt as fallbacks: those methods
+would capture the covering window. An unavailable or near-black PrintWindow
+result returns `capture_failed` without saving an image. A near-black game scene
+can also trigger this existing blank-image heuristic. The game must support
+PrintWindow and keep rendering while unfocused; an application that pauses its
+renderer can return its last rendered state. No new runtime package is needed.
+
+Use `--cursor-mode raw` for the unmodified game image. Cursor variants overlay
+the desktop pointer, which may currently belong to the covering window.
+
+Background capture is also available through `serve --method background`,
+`python -m src.cli.main capture-window --title "Your Game" --method background`,
+and runtime configuration `capture.method: background`. The runtime's
+`capture.strategy: background` is a separate setting for capture-thread timing.
+Input still requires foreground focus; `step` retains its existing focus and
+input guards, including when its screenshot method is `background`.
+
+See [the feature test suite](../tests/background_capture/README.md) for the
+GDI/OpenGL partial/full coverage and freshness checks.
 
 Exit codes: `0` success, `2` invalid arguments/actions, `1` other failures,
 `130` Ctrl+C. If capture fails or loses focus after a step, the error includes the completed

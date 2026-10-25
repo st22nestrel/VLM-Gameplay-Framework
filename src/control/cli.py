@@ -35,7 +35,8 @@ def build_parser():
         target.add_argument("--hwnd", help="Exact window handle (hex or decimal)")
         p.add_argument("--action-config", default=str(DEFAULT_ACTION_CONFIG))
         p.add_argument("--out", help="Artifact directory (default: outputs/control/<session-id>)")
-        p.add_argument("--method", choices=CAPTURE_METHODS, default="auto")
+        p.add_argument("--method", choices=CAPTURE_METHODS, default="auto",
+                       help="Use background for covered-window screenshots without focusing")
         p.add_argument("--cursor-mode", choices=("raw", "cursor", "both"), default="both")
         p.add_argument("--no-focus", action="store_true", help="Require the game to already have focus")
         p.add_argument("--dry-run", action="store_true", help="Plan without changing focus or sending input")

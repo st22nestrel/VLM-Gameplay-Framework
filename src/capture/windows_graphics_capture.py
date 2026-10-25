@@ -1,9 +1,8 @@
-"""Primary Windows capture using win32 APIs (PrintWindow / BitBlt).
+"""Legacy Win32 GDI capture (PrintWindow / BitBlt), not Windows.Graphics.Capture.
 
 Uses per-window capture via PrintWindow with PW_RENDERFULLCONTENT flag,
-which works for most windowed/borderless-windowed applications including
-games using DirectX/OpenGL. Falls back to BitBlt from the window DC if
-PrintWindow produces a blank image.
+whose support depends on the application's renderer. Falls back to BitBlt
+from the desktop DC if PrintWindow produces a blank image, unless disabled.
 """
 
 from __future__ import annotations
@@ -30,20 +29,23 @@ if sys.platform == "win32":
 PW_RENDERFULLCONTENT = 0x00000002
 
 
-def capture_frame(session: WindowSession) -> Optional[CapturedFrame]:
+def capture_frame(
+    session: WindowSession, *, allow_desktop_fallback: bool = True,
+) -> Optional[CapturedFrame]:
     """Capture a single frame from the session's target window.
 
     Tries PrintWindow first (with PW_RENDERFULLCONTENT), then BitBlt.
-    Returns None if both methods fail.
+    With allow_desktop_fallback=False, only PrintWindow is used. This is safe
+    against occlusion; desktop BitBlt would include covering windows.
     """
     if sys.platform != "win32":
         logger.warning("windows_graphics_capture is Windows-only")
         return None
 
-    hwnd = session.target.hwnd
     if not session.is_valid():
-        logger.error("Target window %#010x no longer exists", hwnd)
+        logger.error("Target window %#010x no longer exists", session.target.hwnd)
         return None
+    hwnd = session.target.hwnd
 
     for warning in session.check_health():
         logger.warning(warning)
@@ -63,6 +65,10 @@ def capture_frame(session: WindowSession) -> Optional[CapturedFrame]:
     frame = _capture_printwindow(hwnd, width, height, window_rect, client_rect)
     if frame is not None and not frame.is_blank():
         return frame
+
+    if not allow_desktop_fallback:
+        logger.warning("PrintWindow did not produce a usable image for %#010x", hwnd)
+        return None
 
     if frame is not None:
         logger.info("PrintWindow returned blank image, trying BitBlt")

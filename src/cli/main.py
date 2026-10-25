@@ -25,7 +25,7 @@ except ImportError:
     pass
 
 from src.window_session import enumerate_windows, find_window_by_title, attach, launch_and_attach
-from src.capture import windows_graphics_capture, fallback_capture, dxcam_capture
+from src.capture import background_capture, windows_graphics_capture, fallback_capture, dxcam_capture
 from src.capture.cursor_overlay import normalize_cursor_mode, save_frame_screenshots
 from src.capture.frame import CapturedFrame
 from src.actions.schema import load_action_config
@@ -157,6 +157,8 @@ def _resolve_target(args: argparse.Namespace):
 
 def _do_capture(session, method: str) -> CapturedFrame | None:
     """Perform a single capture using the specified method."""
+    if method == "background":
+        return background_capture.capture_frame(session)
     if method == "dxcam":
         return dxcam_capture.capture_frame(session)
     if method == "mss":
@@ -524,7 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
     cap.add_argument("--hwnd", type=str, help="Target window handle (hex or int)")
     cap.add_argument("--title", type=str, help="Substring to match in window title")
     cap.add_argument("--out", type=str, help="Output directory (default: outputs/captures)")
-    cap.add_argument("--method", choices=["auto", "dxcam", "printwindow", "bitblt", "mss"], default="auto",
+    cap.add_argument("--method", choices=["auto", "dxcam", "printwindow", "bitblt", "mss", "background"], default="auto",
                      help="Capture method (default: auto)")
     cap.add_argument("--cursor-mode", choices=["raw", "cursor", "both"], default="both",
                      help="Screenshot variants to save: raw, cursor, or both (default: both)")

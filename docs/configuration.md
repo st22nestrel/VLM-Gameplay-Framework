@@ -11,7 +11,7 @@ the runtime base, then each run's overrides take precedence.
 | Section | Settings |
 | --- | --- |
 | `target_window` | `hwnd` or `title_substring`; gameplay CLI selects via `--hwnd` or `--title` |
-| `capture` | `method`: auto/dxcam/printwindow/bitblt/mss; after-action or background capture; cursor overlay; settle delay |
+| `capture` | `method`: auto/dxcam/printwindow/bitblt/mss/background; after-action or background capture; cursor overlay; settle delay |
 | `actions` | `config_path` to action definitions and mouse coordinate conversion behavior |
 | `gameplay` | backend, model, prompts, token limit, output directory, delay, pause key, finish strategy |
 | `gameplay.model_settings` | sampling, thinking, coordinate normalization, LoRA, and generation schedules |
@@ -31,6 +31,10 @@ before separator-based non-parameterized commands.
 Use `capture-window --title "Chess Titans" --count 1` to inspect capture output,
 or `parse-text "click at 500 500" --action-config <path>` to inspect parsing.
 `capture.method: auto` tries DXCam if installed, then Win32 capture, then MSS.
+For covered, non-minimized windows, `capture.method: background` uses only
+PrintWindow and refuses desktop fallbacks. Support depends on the game's
+renderer. This controls screenshot acquisition; input still requires focus.
+It is independent of `capture.strategy: background`, which controls threading.
 Foreground input is the default; window visibility, focus, and permissions affect
 whether a particular application accepts capture/input.
 

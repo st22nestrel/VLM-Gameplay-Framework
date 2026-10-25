@@ -1,0 +1,2 @@
+# Additional test dependency for the real GPU-rendered test window only.
+pygame==2.6.1
