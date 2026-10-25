@@ -1,0 +1,8 @@
+﻿actions:
+  - canonical_name: new_game
+    execution: {type: press_key, key: f2}
+  - canonical_name: click_at
+    execution: {type: click_at}
+    parameters:
+      - {name: x, type: int, required: true}
+      - {name: y, type: int, required: true}
