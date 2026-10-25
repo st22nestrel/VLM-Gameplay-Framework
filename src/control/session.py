@@ -103,7 +103,11 @@ class GameSession:
     def actions(self) -> dict:
         return {
             "actions": [dataclasses.asdict(a) for a in self.config.actions.values()],
-            "coordinates": "Client-area pixels, origin at top left; aim is relative to client center.",
+            "coordinates": (
+                "Client-area pixels, origin at top left; aim sets the absolute virtual cursor position."
+                if self.input_method == "windowmessage" else
+                "Client-area pixels, origin at top left; aim is relative to client center."
+            ),
             "max_duration_ms": 10000,
         }
 
@@ -135,6 +139,7 @@ class GameSession:
         self._identity = (session.target.hwnd, session.target.pid)
         self.executor = ActionExecutor(session, dry_run=self.dry_run,
                                        background=self.input_method == "postmessage",
+                                       input_method=self.input_method,
                                        require_focus=self.require_focus)
         return {"target": window_info(session.target), "dry_run": self.dry_run,
                 "input_method": self.input_method, "require_focus": self.require_focus}

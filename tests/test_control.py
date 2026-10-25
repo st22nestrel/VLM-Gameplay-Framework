@@ -362,7 +362,7 @@ def test_allow_unfocused_keeps_target_guards(game, condition):
     game.executor.execute_tick.assert_not_called()
 
 
-@pytest.mark.parametrize("input_method", ["sendinput", "postmessage"])
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage", "windowmessage"])
 @pytest.mark.parametrize("allow_unfocused", [False, True])
 def test_cli_input_options_reach_session(game, monkeypatch, capsys, input_method, allow_unfocused):
     constructor = MagicMock(return_value=game)

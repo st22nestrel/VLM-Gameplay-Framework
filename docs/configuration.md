@@ -43,20 +43,26 @@ and discovery:
 
 ```yaml
 actions:
-  input_method: postmessage  # sendinput (default) | postmessage (experimental)
+  input_method: windowmessage  # sendinput (default) | postmessage (legacy) | windowmessage
   require_focus: false       # default: true; false skips input focus checks
 capture:
   method: background        # screenshot backend, independent of input
 ```
 
-`gameplay` and `discover-actions` accept `--input-method sendinput|postmessage`
+`gameplay` and `discover-actions` accept `--input-method sendinput|postmessage|windowmessage`
 and `--allow-unfocused` as overrides. Suites inherit the settings through their
 runtime configs/overrides; use `game.focus: false` to also disable suite launch
 activation. The external control CLI and chess replay accept the same flags.
 
-PostMessage handles keyboard, mouse movement and plain mouse buttons; plain
+`windowmessage` directs all input, including `click_at`, to the target without
+moving the desktop cursor or activating the window. It tracks virtual mouse
+position, held buttons/modifiers and child recipients. Games must accept Win32
+messages while inactive; Raw Input and DirectInput polling are not emulated.
+See [background input](background-input.md) for usage, compatibility and tests.
+
+Legacy `postmessage` handles keyboard, mouse movement and plain mouse buttons; plain
 buttons currently target the client center. `click_at` retains SetCursorPos +
-SendInput for both methods. With `require_focus: false`, direct input can reach
+SendInput for `sendinput` and legacy `postmessage`. With `require_focus: false`, direct input can reach
 another foreground application. The option permits experimentation; it does
 not change which application accepts injected input. Use background screenshots
 when covering the target; desktop capture can include the covering window.

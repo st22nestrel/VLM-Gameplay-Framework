@@ -75,7 +75,7 @@ def test_bad_settings_fail_before_attaching_or_input(bad):
         GameplayRuntimeConfig.from_raw({"actions": bad})
 
 
-@pytest.mark.parametrize("input_method", ["sendinput", "postmessage"])
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage", "windowmessage"])
 @pytest.mark.parametrize("require_focus", [False, True])
 def test_runtime_and_cli_preserve_independent_settings(input_method, require_focus):
     from src.cli.main import _override_input_settings, build_parser
@@ -98,7 +98,8 @@ def test_legacy_runtime_defaults():
     assert runtime.require_focus is True
 
 
-def test_discovery_cli_passes_overrides_into_loop(tmp_path, monkeypatch):
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage", "windowmessage"])
+def test_discovery_cli_passes_overrides_into_loop(tmp_path, monkeypatch, input_method):
     from src.cli import main as cli
     from src.loop import discovery_loop
 
@@ -109,6 +110,6 @@ def test_discovery_cli_passes_overrides_into_loop(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "_resolve_target", lambda _: MagicMock())
     monkeypatch.setattr(discovery_loop, "DiscoveryLoop", factory)
     args = cli.build_parser().parse_args(["discover-actions", "--title", "Game", "--config", str(config),
-                                         "--input-method", "postmessage", "--allow-unfocused"])
+                                         "--input-method", input_method, "--allow-unfocused"])
     cli.cmd_discover_actions(args)
-    assert factory.call_args.kwargs["input_settings"] == InputSettings("postmessage", False)
+    assert factory.call_args.kwargs["input_settings"] == InputSettings(input_method, False)

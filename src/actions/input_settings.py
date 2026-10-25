@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-INPUT_METHODS = ("sendinput", "postmessage")
+INPUT_METHODS = ("sendinput", "postmessage", "windowmessage")
 
 
 @dataclass(frozen=True)

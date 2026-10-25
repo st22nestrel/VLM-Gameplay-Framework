@@ -43,7 +43,7 @@ def build_parser():
         p.add_argument("--input-method", choices=INPUT_METHODS, default="sendinput",
                        help="Input sender, independent of capture and focus policy (default: sendinput)")
         p.add_argument("--allow-unfocused", action="store_true",
-                       help="Do not activate the target or require foreground focus, with either input sender")
+                       help="Do not activate the target or require foreground focus, with any input sender")
         p.add_argument("--dry-run", action="store_true", help="Plan without changing focus or sending input")
         if command == "step":
             a = p.add_mutually_exclusive_group(required=True)

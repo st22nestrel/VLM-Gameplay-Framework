@@ -30,7 +30,7 @@ non-minimized target without changing or requiring focus; see
 
 ### Input sender and focus policy
 
-`--input-method sendinput|postmessage` selects the input sender (default:
+`--input-method sendinput|postmessage|windowmessage` selects the input sender (default:
 `sendinput`). Independently, `--allow-unfocused` skips automatic activation and
 all foreground-focus checks before, during and after a step or observation.
 These options also apply to `serve` and persist across `attach` requests.
@@ -42,19 +42,25 @@ Window existence, identity, minimized-state checks and input cleanup remain enab
 | `--no-focus` | No | Yes |
 | `--allow-unfocused` | No | No |
 
-Either input method supports every row. Selecting `postmessage` does not itself
+Every input method supports every row. Selecting a sender does not itself
 disable focus checks. `--no-focus --allow-unfocused` behaves like `--allow-unfocused`.
 
 ```powershell
-python -m src.control step --title "Your Game" --action enter --input-method postmessage --allow-unfocused --method background --cursor-mode raw
+python -m src.control step --title "Your Game" --action enter --input-method windowmessage --allow-unfocused --method background --cursor-mode raw
 python -m src.control step --title "Your Game" --action enter --input-method sendinput --allow-unfocused --method background --cursor-mode raw
 ```
+
+`windowmessage` posts keyboard, movement, buttons and `click_at` to the target,
+including child windows, with a virtual cursor and held-button/modifier state.
+It leaves foreground focus and the real cursor alone. Games must process Win32
+input messages while inactive; Raw Input/DirectInput polling is not emulated.
+See [background input and the legacy experiment evaluation](background-input.md).
 
 `sendinput` uses the system input stream; with focus checks disabled, input may
 reach the foreground application. Experimental `postmessage` sends keyboard,
 mouse movement and plain mouse-button messages to the target window. Plain
 mouse buttons currently use the client center. **`click_at` still uses
-SetCursorPos + SendInput in both modes**, so it moves the real cursor and is not
+SetCursorPos + SendInput in those two modes**, so it moves the real cursor and is not
 yet a covered-window click implementation. Games may ignore posted messages.
 
 Screenshot selection is separate: `--method background` uses PrintWindow;
@@ -64,7 +70,8 @@ Responses record `input_method` and `require_focus` for reproducibility.
 The Python API exposes the same independent options:
 
 ```python
-game = GameSession(method="background", input_method="postmessage", require_focus=False)
+game = GameSession(method="background", input_method="windowmessage", require_focus=False,
+                   cursor_mode="raw")
 ```
 
 `focus=False` retains the old `--no-focus` behavior. `require_focus=False` skips

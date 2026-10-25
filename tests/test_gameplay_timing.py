@@ -179,7 +179,7 @@ class GameplayTimingTests(unittest.TestCase):
         self.assertEqual(config.inference_interval_ms, 0)
 
     def test_gameplay_passes_input_and_focus_options_to_executor_and_log(self):
-        for method in ("sendinput", "postmessage"):
+        for method in ("sendinput", "postmessage", "windowmessage"):
             for require_focus in (False, True):
                 with self.subTest(method=method, require_focus=require_focus):
                     loop = self.make_loop(max_ticks=1, actions={"input_method": method,
@@ -191,6 +191,7 @@ class GameplayTimingTests(unittest.TestCase):
                             redirect_stdout(io.StringIO()):
                         log = yaml.safe_load(loop.run().read_text())
                     self.assertEqual(factory.call_args.kwargs["background"], method == "postmessage")
+                    self.assertEqual(factory.call_args.kwargs["input_method"], method)
                     self.assertEqual(factory.call_args.kwargs["require_focus"], require_focus)
                     self.assertEqual(log["input_method"], method)
                     self.assertEqual(log["require_focus"], require_focus)

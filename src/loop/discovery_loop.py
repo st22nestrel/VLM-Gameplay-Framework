@@ -510,6 +510,7 @@ class DiscoveryLoop:
         # Executor
         executor = ActionExecutor(self.session, dry_run=self.dry_run,
                                   background=self.input_settings.input_method == "postmessage",
+                                  input_method=self.input_settings.input_method,
                                   require_focus=self.input_settings.require_focus)
 
         # Start pause/resume hotkey listener

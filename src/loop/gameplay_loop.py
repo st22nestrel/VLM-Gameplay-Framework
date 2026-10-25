@@ -1976,6 +1976,7 @@ class GameplayLoop:
             dry_run=self.dry_run,
             disable_center_delta_conversion=self.disable_center_delta_conversion,
             background=self.input_method == "postmessage",
+            input_method=self.input_method,
             require_focus=self.require_focus,
         )
 
