@@ -16,6 +16,8 @@ capture:
     interval_ms: 500
 actions:
   config_path: configs/actions/default-actions_chess.yaml
+  input_method: sendinput  # sendinput | postmessage (experimental)
+  require_focus: true      # Independent of input_method; false skips input focus guards
   disable_center_delta_conversion: false
 gameplay:
   backend: transformers

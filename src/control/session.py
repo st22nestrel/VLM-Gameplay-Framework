@@ -4,20 +4,22 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import sys
 import time
 import uuid
 from pathlib import Path
 
 from src import window_session
 from src.actions.executor import ActionExecutor
+from src.actions.input_settings import InputSettings
 from src.actions.schema import ParsedAction, load_action_config
 from src.actions.state import ActionState, HeldInput
-from src.capture import dxcam_capture, fallback_capture, windows_graphics_capture
+from src.capture import background_capture, dxcam_capture, fallback_capture, windows_graphics_capture
 from src.capture.cursor_overlay import save_frame_screenshots
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ACTION_CONFIG = ROOT / "configs/actions/control-actions.yaml"
-CAPTURE_METHODS = ("auto", "dxcam", "win32", "mss")
+CAPTURE_METHODS = ("auto", "dxcam", "win32", "mss", "background")
 
 
 class ControlError(Exception):
@@ -47,6 +49,8 @@ def capture_frame(session, method):
         "win32": windows_graphics_capture.capture_frame,
         "mss": fallback_capture.capture_frame,
     }
+    if method == "background":
+        return background_capture.capture_frame(session)
     if method != "auto":
         return backends[method](session)
     # A blank image from an earlier backend must not prevent fallback.
@@ -64,12 +68,19 @@ def capture_frame(session, method):
 
 class GameSession:
     def __init__(self, *, action_config=DEFAULT_ACTION_CONFIG, out=None,
-                 method="auto", cursor_mode="both", dry_run=False, focus=True):
+                 method="auto", cursor_mode="both", dry_run=False, focus=True,
+                 input_method="sendinput", require_focus=True):
+        try:
+            settings = InputSettings(input_method, require_focus)
+        except ValueError as exc:
+            raise ControlError("invalid_request", str(exc)) from exc
         if method not in CAPTURE_METHODS:
             raise ControlError("invalid_request", f"Unknown capture method: {method}")
         if cursor_mode not in ("raw", "cursor", "both"):
             raise ControlError("invalid_request", "cursor_mode must be raw, cursor, or both")
         self.config = load_action_config(action_config)
+        print("Action config:", Path(action_config).resolve(), file=sys.stderr, flush=True)
+        print("Loaded actions:", self.config.canonical_names(), file=sys.stderr, flush=True)
         for action in self.config.actions.values():
             if action.execution.type not in {
                 "hold_key", "hold_keys", "press_key", "press_keys", "mouse_button", "mouse_move", "click_at"
@@ -82,6 +93,8 @@ class GameSession:
         self.cursor_mode = cursor_mode
         self.dry_run = dry_run
         self.focus = focus
+        self.input_method = settings.input_method
+        self.require_focus = settings.require_focus
         self.session = None
         self.executor = None
         self.state = ActionState(self.config)
@@ -90,7 +103,11 @@ class GameSession:
     def actions(self) -> dict:
         return {
             "actions": [dataclasses.asdict(a) for a in self.config.actions.values()],
-            "coordinates": "Client-area pixels, origin at top left; aim is relative to client center.",
+            "coordinates": (
+                "Client-area pixels, origin at top left; aim sets the absolute virtual cursor position."
+                if self.input_method == "windowmessage" else
+                "Client-area pixels, origin at top left; aim is relative to client center."
+            ),
             "max_duration_ms": 10000,
         }
 
@@ -120,10 +137,14 @@ class GameSession:
         self.stop()
         self.session = session
         self._identity = (session.target.hwnd, session.target.pid)
-        self.executor = ActionExecutor(session, dry_run=self.dry_run)
-        return {"target": window_info(session.target), "dry_run": self.dry_run}
+        self.executor = ActionExecutor(session, dry_run=self.dry_run,
+                                       background=self.input_method == "postmessage",
+                                       input_method=self.input_method,
+                                       require_focus=self.require_focus)
+        return {"target": window_info(session.target), "dry_run": self.dry_run,
+                "input_method": self.input_method, "require_focus": self.require_focus}
 
-    def _prepare(self):
+    def _prepare(self, *, background_observation=False):
         if self.session is None:
             raise ControlError("not_attached", "Attach to a game first")
         if not self.session.is_valid():
@@ -133,19 +154,30 @@ class GameSession:
             raise ControlError("target_unavailable", "Target window identity changed; attach again")
         if self.session.is_minimized():
             raise ControlError("target_unavailable", "Restore the minimized target window first")
-        if self.focus and not self.dry_run and not self.session.focus():
+        if background_observation:
+            return
+        if self.require_focus and self.focus and not self.dry_run and not self.session.focus():
             raise ControlError("focus_failed", "Could not focus target window")
         self._require_focus()
 
     def _require_focus(self):
-        if not self.session.is_foreground():
+        if self.require_focus and not self.session.is_foreground():
             raise ControlError("focus_lost", "Target must remain focused; no screenshot returned")
 
     def _observation(self) -> dict:
-        self._require_focus()
+        if self.method != "background":
+            self._require_focus()
         frame = capture_frame(self.session, self.method)
         # Discard the frame if focus changed while the backend was capturing.
-        self._require_focus()
+        if self.method != "background":
+            self._require_focus()
+        elif not self.session.is_valid() or self.session.is_minimized():
+            raise ControlError("target_unavailable", "Target disappeared or was minimized during capture")
+        if self.method == "background" and (
+            (self.session.target.hwnd, self.session.target.pid) != self._identity
+            or (frame is not None and frame.hwnd != self.session.target.hwnd)
+        ):
+            raise ControlError("target_unavailable", "Target window identity changed during capture")
         if frame is None:
             raise ControlError("capture_failed", "No frame returned by capture backend")
         path = self.out / f"frame_{time.time_ns()}_{uuid.uuid4().hex[:8]}.png"
@@ -162,7 +194,7 @@ class GameSession:
         }
 
     def observe(self) -> dict:
-        self._prepare()
+        self._prepare(background_observation=self.method == "background")
         return self._observation()
 
     def _parse_actions(self, actions) -> list[ParsedAction]:
@@ -225,7 +257,10 @@ class GameSession:
                     raise ControlError("focus_failed", "Input skipped because the target lost focus")
                 deadline = time.perf_counter() + duration_ms / 1000
                 while time.perf_counter() < deadline:
-                    if not self.session.is_valid() or not self.session.is_foreground():
+                    if not self.session.is_valid() or self.session.is_minimized():
+                        raise ControlError("target_unavailable", "Target disappeared or was minimized during the step",
+                                           actions_may_have_executed=True)
+                    if self.require_focus and not self.session.is_foreground():
                         raise ControlError("focus_lost", "Target lost focus during the step",
                                            actions_may_have_executed=True)
                     time.sleep(min(0.02, max(0, deadline - time.perf_counter())))
@@ -242,6 +277,8 @@ class GameSession:
             "settle_ms": settle_ms,
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
             "execution": execution,
+            "input_method": self.input_method,
+            "require_focus": self.require_focus,
             "inputs_released": True,
         }
         try:
@@ -256,7 +293,10 @@ class GameSession:
 
     def stop(self) -> dict:
         if self.executor is not None:
-            self.executor.release_all(self.state.release_all())
+            try:
+                self.executor.release_all(self.state.release_all())
+            finally:
+                self.executor.close()
         self.session = None
         self.executor = None
         self._identity = None

@@ -18,12 +18,66 @@ python -m src.control step --title "Your Game" --action move_forward --duration-
 `--title` must match exactly one visible window. Use `--hwnd 0x12345` from
 `list-windows` when titles are ambiguous. Each one-shot command attaches afresh;
 no daemon or session file is needed. `observe` and `step` bring the target to
-the foreground by default. `--no-focus` leaves focus alone. Both commands require
+the foreground by default. `--no-focus` leaves focus alone. By default both commands require
 the target to be focused, including with `--no-focus` and `--dry-run`. `--dry-run`
 sends no input, changes no focus, and skips action/settle waits, but still captures
 a real screenshot. Focus is checked before and after capture; a failed check
 returns a `focus_lost` error without saving or returning the screenshot. These
 checks cannot detect a brief focus change entirely between checks.
+The exception is `observe --method background`, which captures a covered,
+non-minimized target without changing or requiring focus; see
+[background screenshots](#background-window-screenshots).
+
+### Input sender and focus policy
+
+`--input-method sendinput|postmessage|windowmessage` selects the input sender (default:
+`sendinput`). Independently, `--allow-unfocused` skips automatic activation and
+all foreground-focus checks before, during and after a step or observation.
+These options also apply to `serve` and persist across `attach` requests.
+Window existence, identity, minimized-state checks and input cleanup remain enabled.
+
+| Options | Activates target before input | Requires foreground focus |
+| --- | --- | --- |
+| Defaults | Yes | Yes |
+| `--no-focus` | No | Yes |
+| `--allow-unfocused` | No | No |
+
+Every input method supports every row. Selecting a sender does not itself
+disable focus checks. `--no-focus --allow-unfocused` behaves like `--allow-unfocused`.
+
+```powershell
+python -m src.control step --title "Your Game" --action enter --input-method windowmessage --allow-unfocused --method background --cursor-mode raw
+python -m src.control step --title "Your Game" --action enter --input-method sendinput --allow-unfocused --method background --cursor-mode raw
+```
+
+`windowmessage` sends keyboard, movement, buttons and `click_at` to the target,
+including child windows, with a virtual cursor and held-button/modifier state.
+It leaves foreground focus and the real cursor alone. Games must process Win32
+input messages while inactive; Raw Input/DirectInput polling is not emulated.
+Chess Titans uses an optional Frida cursor shim; install
+`requirements-windowmessage.txt` for that compatibility path.
+See [background input and the legacy experiment evaluation](background-input.md).
+
+`sendinput` uses the system input stream; with focus checks disabled, input may
+reach the foreground application. Experimental `postmessage` sends keyboard,
+mouse movement and plain mouse-button messages to the target window. Plain
+mouse buttons currently use the client center. **`click_at` still uses
+SetCursorPos + SendInput in those two modes**, so it moves the real cursor and is not
+yet a covered-window click implementation. Games may ignore posted messages.
+
+Screenshot selection is separate: `--method background` uses PrintWindow;
+desktop capture methods can include covering windows when unfocused capture is allowed.
+Responses record `input_method` and `require_focus` for reproducibility.
+
+The Python API exposes the same independent options:
+
+```python
+game = GameSession(method="background", input_method="windowmessage", require_focus=False,
+                   cursor_mode="raw")
+```
+
+`focus=False` retains the old `--no-focus` behavior. `require_focus=False` skips
+activation even when `focus` has its default value of `True`.
 
 Combine actions with repeated `--action` flags:
 
@@ -97,10 +151,43 @@ and a failed capture can look alike.
 Artifacts go to `outputs/control/<session-id>/` by default. Set `--out` to
 collect frames in a chosen directory. Filenames are unique across calls.
 Use `--cursor-mode raw|cursor|both` (default `both`) and
-`--method auto|dxcam|win32|mss` (default `auto`). Auto tries DXCam, Windows
+`--method auto|dxcam|win32|mss|background` (default `auto`). Auto tries DXCam, Windows
 PrintWindow/BitBlt, then MSS, skipping blank results where possible. `win32`
 uses the existing PrintWindow-to-BitBlt fallback. Desktop-based methods capture
 overlapping windows too, so keep the game visible.
+
+### Background window screenshots
+
+```powershell
+python -m src.control observe --title "Your Game" --method background --cursor-mode raw
+```
+
+`background` captures the client area with the existing PrintWindow backend,
+including when another window partly or fully covers the target. `observe`
+does not activate, move, or restore the target in this mode, even with the
+default focus setting. The target must exist and must not be minimized.
+The response reports `foreground: false` when appropriate.
+
+This mode never uses DXCam, MSS, or desktop BitBlt as fallbacks: those methods
+would capture the covering window. An unavailable or near-black PrintWindow
+result returns `capture_failed` without saving an image. A near-black game scene
+can also trigger this existing blank-image heuristic. The game must support
+PrintWindow and keep rendering while unfocused; an application that pauses its
+renderer can return its last rendered state. No new runtime package is needed.
+
+Use `--cursor-mode raw` for the unmodified game image. Cursor variants overlay
+the desktop pointer, which may currently belong to the covering window.
+
+Background capture is also available through `serve --method background`,
+`python -m src.cli.main capture-window --title "Your Game" --method background`,
+and runtime configuration `capture.method: background`. The runtime's
+`capture.strategy: background` is a separate setting for capture-thread timing.
+Input requires foreground focus by default, including when its screenshot method
+is `background`. Use `--allow-unfocused` to explicitly bypass focus guards,
+independently of screenshot and input methods.
+
+See [the feature test suite](../tests/background_capture/README.md) for the
+GDI/OpenGL partial/full coverage and freshness checks.
 
 Exit codes: `0` success, `2` invalid arguments/actions, `1` other failures,
 `130` Ctrl+C. If capture fails or loses focus after a step, the error includes the completed

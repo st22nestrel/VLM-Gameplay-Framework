@@ -11,6 +11,7 @@ from typing import Any, Optional
 import yaml
 
 from src.actions.schema import ActionConfig, load_action_config
+from src.actions.input_settings import InputSettings
 from src.capture.cursor_overlay import (
     cursor_mode_from_config,
     vlm_image_mode_from_config,
@@ -525,6 +526,8 @@ class GameplayRuntimeConfig:
     pause_key: Optional[str]
     delay_ms: int
     output_dir: Path
+    input_method: str = "sendinput"
+    require_focus: bool = True
 
     @classmethod
     def from_raw(
@@ -545,6 +548,7 @@ class GameplayRuntimeConfig:
         actions_cfg = raw.get("actions", {})
         if not isinstance(actions_cfg, dict):
             actions_cfg = {}
+        input_settings = InputSettings.from_config(actions_cfg)
 
         action_config_path = str(
             actions_cfg.get("config_path", "configs/actions/default-actions_chess.yaml")
@@ -624,6 +628,8 @@ class GameplayRuntimeConfig:
             pause_key=pause_key,
             delay_ms=int(gp["delay_ms"]) if gp.get("delay_ms") is not None else 3000,
             output_dir=Path(gp.get("output_dir", "outputs/gameplay-runs")),
+            input_method=input_settings.input_method,
+            require_focus=input_settings.require_focus,
         )
 
 

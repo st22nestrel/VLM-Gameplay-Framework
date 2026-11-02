@@ -315,3 +315,77 @@ def test_bad_cli_json_does_not_attach(game, monkeypatch, capsys, text):
     assert cli.main(["step", "--title", "Game", "--actions", text]) == 2
     assert not json.loads(capsys.readouterr().out)["ok"]
     game.attach.assert_not_called()
+
+
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage"])
+@pytest.mark.parametrize("method", ["auto", "background"])
+def test_allow_unfocused_executes_real_executor_without_activating(game, monkeypatch, input_method, method):
+    from src.actions import executor as platform
+
+    if sys.platform != "win32":
+        pytest.skip("Windows input adapters")
+    send = MagicMock()
+    post = MagicMock()
+    monkeypatch.setattr(platform, "_send_input", send)
+    monkeypatch.setattr(platform.win32api, "PostMessage", post)
+    monkeypatch.setattr(control, "ActionExecutor", platform.ActionExecutor)
+    game.require_focus = False
+    game.input_method = input_method
+    game.method = method
+    game.attach(hwnd=123)
+    game.session.is_foreground.return_value = False
+    result = game.step(actions=["enter"], duration_ms=25, settle_ms=0)
+    assert not result["require_focus"]
+    assert result["input_method"] == input_method
+    assert result["execution"]["focus_ok"] is False
+    assert not result["execution"]["skipped"]
+    assert result["observation"]["foreground"] is False
+    assert result["inputs_released"]
+    game.session.focus.assert_not_called()
+    assert (send.call_count > 0) == (input_method == "sendinput")
+    assert (post.call_count > 0) == (input_method == "postmessage")
+
+
+@pytest.mark.parametrize("condition", ["closed", "minimized", "identity_changed"])
+def test_allow_unfocused_keeps_target_guards(game, condition):
+    game.require_focus = False
+    game.session.is_foreground.return_value = False
+    if condition == "closed":
+        game.session.is_valid.return_value = False
+    elif condition == "minimized":
+        game.session.is_minimized.return_value = True
+    else:
+        game.session.target = WindowInfo(123, "Other", "test", 999, (0, 0, 640, 480), True, False)
+    with pytest.raises(control.ControlError) as error:
+        game.step(actions=["enter"])
+    assert error.value.code == "target_unavailable"
+    game.executor.execute_tick.assert_not_called()
+
+
+@pytest.mark.parametrize("input_method", ["sendinput", "postmessage", "windowmessage"])
+@pytest.mark.parametrize("allow_unfocused", [False, True])
+def test_cli_input_options_reach_session(game, monkeypatch, capsys, input_method, allow_unfocused):
+    constructor = MagicMock(return_value=game)
+    monkeypatch.setattr(cli, "GameSession", constructor)
+    args = ["step", "--hwnd", "123", "--input-method", input_method,
+            "--action", "enter", "--duration-ms", "0", "--settle-ms", "0"]
+    if allow_unfocused:
+        args.append("--allow-unfocused")
+    assert cli.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["ok"]
+    assert constructor.call_args.kwargs["input_method"] == input_method
+    assert constructor.call_args.kwargs["require_focus"] is not allow_unfocused
+
+
+def test_serve_retains_input_and_focus_settings_when_reattaching(game, monkeypatch):
+    constructor = MagicMock(return_value=game.executor)
+    monkeypatch.setattr(control, "ActionExecutor", constructor)
+    game.input_method = "postmessage"
+    game.require_focus = False
+    output = io.StringIO()
+    cli.serve(game, io.StringIO('{"op":"attach","hwnd":123}\n{"op":"stop"}\n'), output)
+    response = json.loads(output.getvalue().splitlines()[0])
+    assert response["result"]["input_method"] == "postmessage"
+    assert response["result"]["require_focus"] is False
+    assert constructor.call_args.kwargs["background"] is True
+    assert constructor.call_args.kwargs["require_focus"] is False

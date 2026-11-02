@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageStat
 import yaml
 
 from src.window_session import WindowSession
-from src.capture import windows_graphics_capture, fallback_capture, dxcam_capture
+from src.capture import background_capture, windows_graphics_capture, fallback_capture, dxcam_capture
 from src.capture.cursor_overlay import save_frame_screenshots
 from src.capture.frame import CapturedFrame
 from src.actions.schema import ParsedAction
@@ -416,8 +416,10 @@ def _do_capture(session: WindowSession, method: str) -> Optional[CapturedFrame]:
 
     Args:
         session: WindowSession for the target window
-        method: Capture method to use ("dxcam", "mss", "printwindow", "bitblt", "auto")
+        method: "dxcam", "mss", "printwindow", "bitblt", "auto", or "background"
     """
+    if method == "background":
+        return background_capture.capture_frame(session)
     if method == "dxcam":
         return dxcam_capture.capture_frame(session)
     if method == "mss":
@@ -543,6 +545,8 @@ class GameplayLoop:
         # Action config
         self.action_config = config.action_config
         self.disable_center_delta_conversion = config.disable_center_delta_conversion
+        self.input_method = config.input_method
+        self.require_focus = config.require_focus
 
         # Pause/resume hotkey
         self.pause_key: Optional[str] = config.pause_key
@@ -1971,6 +1975,9 @@ class GameplayLoop:
             self.session,
             dry_run=self.dry_run,
             disable_center_delta_conversion=self.disable_center_delta_conversion,
+            background=self.input_method == "postmessage",
+            input_method=self.input_method,
+            require_focus=self.require_focus,
         )
 
         # Start pause/resume hotkey listener
@@ -2114,9 +2121,12 @@ class GameplayLoop:
                     "Cleanup: released %s",
                     [h.canonical_name for h in released],
                 )
-            if self._freeze_controller is not None:
-                self._freeze_controller.close()
-                self._freeze_controller = None
+            try:
+                executor.close()
+            finally:
+                if self._freeze_controller is not None:
+                    self._freeze_controller.close()
+                    self._freeze_controller = None
 
         log_path = self._write_log()
         print(f"\nGameplay loop complete. {len(self._tick_log)} ticks. Log: {log_path}")
@@ -2152,6 +2162,8 @@ class GameplayLoop:
             "thinking_budget": self._thinking_budget,
             "finish_strategy": self.finish_strategy_name,
             "capture_method": self.capture_method,
+            "input_method": self.input_method,
+            "require_focus": self.require_focus,
             "cursor_mode": self.cursor_mode,
             "vlm_image_mode": self.vlm_image_mode,
             "pause_key": self.pause_key,

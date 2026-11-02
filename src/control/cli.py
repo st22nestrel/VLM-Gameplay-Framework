@@ -10,6 +10,7 @@ import math
 import sys
 from pathlib import Path
 
+from src.actions.input_settings import INPUT_METHODS
 from .session import CAPTURE_METHODS, DEFAULT_ACTION_CONFIG, ControlError, GameSession, list_windows
 
 
@@ -35,9 +36,14 @@ def build_parser():
         target.add_argument("--hwnd", help="Exact window handle (hex or decimal)")
         p.add_argument("--action-config", default=str(DEFAULT_ACTION_CONFIG))
         p.add_argument("--out", help="Artifact directory (default: outputs/control/<session-id>)")
-        p.add_argument("--method", choices=CAPTURE_METHODS, default="auto")
+        p.add_argument("--method", choices=CAPTURE_METHODS, default="auto",
+                       help="Use background for covered-window screenshots without focusing")
         p.add_argument("--cursor-mode", choices=("raw", "cursor", "both"), default="both")
         p.add_argument("--no-focus", action="store_true", help="Require the game to already have focus")
+        p.add_argument("--input-method", choices=INPUT_METHODS, default="sendinput",
+                       help="Input sender, independent of capture and focus policy (default: sendinput)")
+        p.add_argument("--allow-unfocused", action="store_true",
+                       help="Do not activate the target or require foreground focus, with any input sender")
         p.add_argument("--dry-run", action="store_true", help="Plan without changing focus or sending input")
         if command == "step":
             a = p.add_mutually_exclusive_group(required=True)
@@ -141,6 +147,8 @@ def main(argv=None):
                     cursor_mode=getattr(args, "cursor_mode", "both"),
                     dry_run=getattr(args, "dry_run", False),
                     focus=not getattr(args, "no_focus", False),
+                    input_method=getattr(args, "input_method", "sendinput"),
+                    require_focus=not getattr(args, "allow_unfocused", False),
                 )
                 if args.command == "actions":
                     result = game.actions()

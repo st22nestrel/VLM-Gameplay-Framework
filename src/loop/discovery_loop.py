@@ -25,6 +25,7 @@ from src.capture.cursor_overlay import (
 )
 from src.capture.frame import CapturedFrame
 from src.actions.executor import ActionExecutor
+from src.actions.input_settings import InputSettings
 from src.backends.base import VLMBackend
 from src.discovery.parser import (
     DiscoveredMapping,
@@ -78,12 +79,16 @@ class DiscoveryLoop:
         verbose: bool = False,
         lora_base_model_source: Optional[str] = None,
         backend: Optional[VLMBackend] = None,
+        input_settings: Optional[InputSettings] = None,
     ) -> None:
         self.verbose = verbose
         self.session = session
         with open(Path(config_path), "r") as f:
             raw = yaml.safe_load(f)
         self.raw_config = raw
+        self.input_settings = input_settings or InputSettings.from_config(raw.get("actions", {}))
+        raw.setdefault("actions", {}).update(input_method=self.input_settings.input_method,
+                                             require_focus=self.input_settings.require_focus)
 
         disc = raw.get("discovery", {})
 
@@ -503,7 +508,10 @@ class DiscoveryLoop:
             time.sleep(delay_sec)
 
         # Executor
-        executor = ActionExecutor(self.session, dry_run=self.dry_run)
+        executor = ActionExecutor(self.session, dry_run=self.dry_run,
+                                  background=self.input_settings.input_method == "postmessage",
+                                  input_method=self.input_settings.input_method,
+                                  require_focus=self.input_settings.require_focus)
 
         # Start pause/resume hotkey listener
         if self.pause_key:
@@ -611,6 +619,8 @@ class DiscoveryLoop:
                 self._pause_controller = None
             self._stop_capture_thread()
 
+            executor.close()
+
         log_path = self._write_log()
         print(
             f"\nDiscovery complete. {len(self._tick_log)} ticks, "
@@ -633,6 +643,8 @@ class DiscoveryLoop:
             "frame_cadence_ms": self.frame_cadence_ms,
             "max_new_tokens": self._max_new_tokens,
             "capture_method": self.capture_method,
+            "input_method": self.input_settings.input_method,
+            "require_focus": self.input_settings.require_focus,
             "cursor_mode": self.cursor_mode,
             "vlm_image_mode": self.vlm_image_mode,
             "pause_key": self.pause_key,

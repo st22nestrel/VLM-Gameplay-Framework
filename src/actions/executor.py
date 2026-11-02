@@ -1,10 +1,15 @@
-"""Action executor: translates TickPlans into platform input via SendInput.
+"""Action executor: translates TickPlans into desktop or window-directed input.
 
-Two input modes:
-- **foreground** (default): uses SendInput — requires the target window to be focused.
-- **background** (experimental): uses PostMessage for keyboard and mouse buttons
-  (these don't require focus), but falls back to SendInput for mouse movement
-  (because FPS games read Raw Input deltas, not WM_MOUSEMOVE).
+Input modes:
+- **sendinput** (default): uses SendInput.
+- **postmessage** (legacy experiment): uses PostMessage for keyboard, plain mouse
+  buttons (at client center), and mouse movement. click_at still uses
+  SetCursorPos + SendInput for clicks, as in sendinput mode.
+- **windowmessage**: stateful window-directed keyboard, movement, buttons and
+  click_at, without moving the desktop cursor or activating the target.
+
+Focus is required by default in all modes; require_focus=False disables guards
+independently of the selected sender.
 """
 
 from __future__ import annotations
@@ -17,6 +22,8 @@ import time
 from typing import Optional
 
 from src.actions.state import HeldInput, TickPlan
+from src.actions.input_settings import InputSettings
+from src.actions.window_message import WindowMessageInput
 from src.window_session import WindowSession
 
 logger = logging.getLogger(__name__)
@@ -267,13 +274,12 @@ def check_focus(session: WindowSession) -> bool:
 class ActionExecutor:
     """Executes TickPlans by sending platform input events.
 
-    Two input modes:
-    - **foreground** (default): SendInput for everything. Requires focus.
-    - **background** (experimental): PostMessage for keyboard/mouse-buttons
-      (no focus needed), SendInput for mouse movement (hardware-level, moves
-      the real cursor — FPS games read Raw Input deltas which PostMessage
-      can't fabricate). Mouse aiming may still not work if the game ignores
-      input when unfocused.
+    Input modes:
+    - **sendinput** (default): SendInput for input and SetCursorPos for click_at.
+    - **postmessage** (legacy): PostMessage for keyboard, mouse movement,
+      and plain mouse-buttons. click_at retains the foreground implementation.
+    - **windowmessage**: all events target the window, with a virtual cursor.
+    require_focus controls guards independently of the selected transport.
     """
 
     def __init__(
@@ -282,29 +288,40 @@ class ActionExecutor:
         dry_run: bool = False,
         background: bool = False,
         disable_center_delta_conversion: bool = False,
+        require_focus: bool = True,
+        input_method: Optional[str] = None,
     ) -> None:
+        method = input_method if input_method is not None else ("postmessage" if background else "sendinput")
+        InputSettings(method, require_focus)
+        if background and method != "postmessage":
+            raise ValueError("background=True is the legacy alias for input_method='postmessage'")
         self._session = session
         self._dry_run = dry_run
-        self._background = background
+        self._input_method = method
+        self._background = method != "sendinput"
+        self._window_input = None
+        if method == "windowmessage" and not dry_run and sys.platform == "win32":
+            self._window_input = WindowMessageInput(session, _VK_CODES, _SCAN_CODES)
+        self._require_focus = require_focus
         self._disable_center_delta_conversion = disable_center_delta_conversion
         if sys.platform != "win32":
             logger.warning(
                 "ActionExecutor: non-Windows platform detected — "
                 "input execution will be logged but not sent"
             )
-        if background:
+        if method == "postmessage":
             logger.warning(
                 "EXPERIMENTAL: background input mode enabled — "
-                "keyboard/mouse-buttons via PostMessage (no focus required), "
-                "mouse movement via SendInput (moves real cursor, game must "
-                "process input when unfocused for aiming to work)."
+                "keyboard/mouse movement/plain buttons via PostMessage; "
+                "click_at still moves the real cursor and clicks via SendInput. "
+                "Focus required: %s", require_focus,
             )
 
     def execute_tick(self, plan: TickPlan) -> dict:
         """Execute a single tick plan. Returns a summary dict for logging.
 
-        In foreground mode: skips input when the target window is not focused.
-        In background mode: always sends — focus not required.
+        Skips input when require_focus is enabled and the target is unfocused,
+        independently of the input transport.
         """
         summary = {
             "focus_ok": False,
@@ -316,15 +333,16 @@ class ActionExecutor:
             "skipped": False,
             "dry_run": self._dry_run,
             "background": self._background,
+            "input_method": self._input_method,
+            "require_focus": self._require_focus,
         }
 
-        # Focus guard — only enforced in foreground mode
-        if not self._background and not check_focus(self._session):
+        if self._require_focus and not check_focus(self._session):
             summary["skipped"] = True
             logger.warning("Tick skipped — target window not focused")
             return summary
 
-        summary["focus_ok"] = True
+        summary["focus_ok"] = self._session.is_foreground()
 
         # 1. Release inputs no longer held
         for held in plan.to_release:
@@ -357,8 +375,16 @@ class ActionExecutor:
 
     def release_all(self, held_inputs: list[HeldInput]) -> None:
         """Release a list of held inputs (used for cleanup)."""
+        if self._window_input is not None:
+            self._window_input.release_all()
+            return
         for held in held_inputs:
             self._release_input(held)
+
+    def close(self) -> None:
+        """Release backend-owned inputs and detach any compatibility shim."""
+        if self._window_input is not None:
+            self._window_input.close()
 
     # ── private input methods ────────────────────────────────────────────
 
@@ -380,7 +406,9 @@ class ActionExecutor:
         logger.debug("Key down: %s (bg=%s)", key, self._background)
         if self._dry_run or sys.platform != "win32":
             return
-        if self._background:
+        if self._window_input is not None:
+            self._window_input.key(key)
+        elif self._background:
             self._post_key(key, up=False)
         else:
             scan = _SCAN_CODES.get(key.lower())
@@ -393,7 +421,9 @@ class ActionExecutor:
         logger.debug("Key up: %s (bg=%s)", key, self._background)
         if self._dry_run or sys.platform != "win32":
             return
-        if self._background:
+        if self._window_input is not None:
+            self._window_input.key(key, up=True)
+        elif self._background:
             self._post_key(key, up=True)
         else:
             scan = _SCAN_CODES.get(key.lower())
@@ -420,7 +450,9 @@ class ActionExecutor:
         logger.debug("Mouse button down: %s (bg=%s)", button, self._background)
         if self._dry_run or sys.platform != "win32":
             return
-        if self._background:
+        if self._window_input is not None:
+            self._window_input.button(button)
+        elif self._background:
             self._post_mouse_button(button, up=False)
         else:
             flag = _MOUSE_BUTTON_DOWN.get(button)
@@ -433,7 +465,9 @@ class ActionExecutor:
         logger.debug("Mouse button up: %s (bg=%s)", button, self._background)
         if self._dry_run or sys.platform != "win32":
             return
-        if self._background:
+        if self._window_input is not None:
+            self._window_input.button(button, up=True)
+        elif self._background:
             self._post_mouse_button(button, up=True)
         else:
             flag = _MOUSE_BUTTON_UP.get(button)
@@ -467,7 +501,8 @@ class ActionExecutor:
     def click_at(self, x: int, y: int) -> dict:
         """Move cursor to (x, y) in client coordinates and left-click.
 
-        Foreground mode: SetCursorPos (converted to screen coords) + SendInput click.
+        windowmessage uses a virtual cursor and window-directed messages.
+        Other modes use SetCursorPos (screen coords) + SendInput click.
         Respects dry_run and focus guard.
 
         Returns a dict with execution details for debugging.
@@ -477,10 +512,13 @@ class ActionExecutor:
         if self._dry_run or sys.platform != "win32":
             info["status"] = "dry_run" if self._dry_run else "non_win32"
             return info
-        if not self._background and not check_focus(self._session):
+        if self._require_focus and not check_focus(self._session):
             logger.warning("click_at skipped — target window not focused")
             info["status"] = "skipped_no_focus"
             return info
+
+        if self._window_input is not None:
+            return self._window_input.click_at(x, y)
 
         # Read cursor position before
         cursor_before = win32api.GetCursorPos()
@@ -518,6 +556,11 @@ class ActionExecutor:
           Note: most FPS games ignore WM_MOUSEMOVE for camera — this is
           experimental and mainly useful for menu/UI interaction.
         """
+        if self._dry_run or sys.platform != "win32":
+            return
+        if self._window_input is not None:
+            self._window_input.move(x, y)
+            return
         client_rect = self._session.get_client_rect()
         client_w = client_rect[2] - client_rect[0]
         client_h = client_rect[3] - client_rect[1]

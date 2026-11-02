@@ -5,10 +5,23 @@ ask the model for an action, and execute keyboard/mouse input. The examples targ
 Chess Titans; change the prompts and action definitions to control another game
 or application. Compatibility depends on the application's capture and input behavior.
 
-Capture targets the game window's client area. Keep it visible and focused:
+Capture targets the game window's client area. With the default setup, keep it visible and focused:
 desktop capture methods can include overlapping windows. The control CLI checks
-focus before and after capture and rejects screenshots on focus loss. The model
-loop guards input, but still sends model requests when unfocused.
+focus before and after capture and rejects screenshots on focus loss by default.
+The model loop guards input by default, but still sends model requests when unfocused.
+Use `--input-method sendinput|postmessage|windowmessage` to select the input sender and
+`--allow-unfocused` to independently skip focus guards for experiments. `click_at`
+currently moves the real cursor with `sendinput` and legacy `postmessage`.
+For window-directed keys, movement, buttons and clicks, use
+`--input-method windowmessage --allow-unfocused --method background --cursor-mode raw`.
+This keeps the real cursor and foreground focus unchanged for games that accept
+Win32 messages while inactive; see [background input and experiment notes](docs/background-input.md).
+Chess Titans uses a temporary process-local cursor hook; install its optional
+dependency with `python -m pip install -r requirements-windowmessage.txt`.
+For screenshots of covered, non-minimized windows, use
+`observe --method background --cursor-mode raw`. This leaves focus alone and
+uses PrintWindow without any desktop-capture fallback. Support depends on the
+game's renderer; see [background capture](docs/external-control.md#background-window-screenshots).
 The CLI does not restrict a coding agent's access to its other tools.
 
 Includes a game control CLI for external coding agents and shell scripts, local
@@ -40,7 +53,10 @@ Do not copy a private worktree's `.env`, outputs, datasets, or model weights.
 
 ## Game control CLI
 
-**The CLI is meant to be used by (coding) agents.** Just tell your agent to use cli tools present in this repo to play game X until certain condition met (like destination reached, win etc.) and observe agent playing (you should not do anything else as game window must be in focus to be correctly captured).
+**The CLI is meant to be used by (coding) agents.** Tell your agent to use the CLI
+to play a game until a condition is met. The default input/capture setup needs
+foreground focus. For compatible games, use the background input and capture
+options above to keep working in other windows.
 
 Use `python -m src.control` to capture screenshots and send timed keyboard/mouse
 actions from a shell or external coding agent, without loading a model or making
@@ -50,6 +66,7 @@ API requests. Launch your game, then run:
 python -m src.control list-windows
 python -m src.control actions
 python -m src.control observe --title "Your Game"
+python -m src.control observe --title "Your Game" --method background --cursor-mode raw
 python -m src.control step --title "Your Game" --action move_forward --duration-ms 250
 ```
 
